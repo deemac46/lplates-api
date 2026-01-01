@@ -104,7 +104,7 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
     @Override
     public Instructor getInstructorById(Long instructorId) {
 
-        String query = "SELECT * FROM " + INSTRUCTORS_TABLE_NAME + " WHERE instructor_id = ?";
+        String query = "SELECT * FROM " + INSTRUCTORS_TABLE_NAME + " WHERE instructorId = ?";
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement(query)) {
 
@@ -113,11 +113,11 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
 
             if (resultSet.next()) {
                 Instructor instructor = new Instructor();
-                instructor.setInstructorId(resultSet.getLong("instructor_id"));
-                instructor.setFirstName(resultSet.getString("first_name"));
-                instructor.setLastName(resultSet.getString("last_name"));
+                instructor.setInstructorId(resultSet.getLong("instructorId"));
+                instructor.setFirstName(resultSet.getString("firstName"));
+                instructor.setLastName(resultSet.getString("lastName"));
                 instructor.setEmail(resultSet.getString("email"));
-                instructor.setPhoneNumber(resultSet.getString("phone_number"));
+                instructor.setPhoneNumber(resultSet.getString("phoneNumber"));
                 instructor.setTransmission(resultSet.getString("transmission"));
                 instructor.setRating(resultSet.getDouble("rating"));
                 instructor.setCarMake(resultSet.getString("carMake"));
@@ -181,7 +181,7 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
             return null;
         }
 
-        String query = "SELECT * FROM " + BOOKINGS_TABLE_NAME + " WHERE instructor_id = ?";
+        String query = "SELECT * FROM " + BOOKINGS_TABLE_NAME + " WHERE instructorId = ?";
         List<Booking> bookings = new ArrayList<>();
 
         try (Connection connection = connect();
@@ -213,11 +213,19 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
 
             while (resultSet.next()) {
                 Instructor instructor = new Instructor();
-                instructor.setInstructorId(resultSet.getLong("instructor_id"));
-                instructor.setFirstName(resultSet.getString("first_name"));
-                instructor.setLastName(resultSet.getString("last_name"));
+                instructor.setInstructorId(resultSet.getLong("instructorId"));
+                instructor.setLicenseId(resultSet.getLong("licenseId"));
+                instructor.setFirstName(resultSet.getString("firstName"));
+                instructor.setLastName(resultSet.getString("lastName"));
                 instructor.setEmail(resultSet.getString("email"));
-                instructor.setPhoneNumber(resultSet.getString("phone_number"));
+                instructor.setPhoneNumber(resultSet.getString("phoneNumber"));
+                instructor.setSpecialization(resultSet.getString("specialization"));
+                instructor.setTransmission(resultSet.getString("transmission"));
+                instructor.setRating(resultSet.getDouble("rating"));
+                instructor.setCarMake(resultSet.getString("carMake"));
+                instructor.setCarModel(resultSet.getString("carModel"));
+                instructor.setLocations(resultSet.getString("locations") != null ?
+                        List.of(resultSet.getString("locations").split(",")) : new ArrayList<>());
                 instructors.add(instructor);
             }
         } catch (SQLException e) {
@@ -230,7 +238,7 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
     // Example method to insert data
     @Override
     public void insertRecord(Booking booking, long instructorId) {
-        String query = "INSERT INTO bookings (booking_id, user_id, resource_id, start_time, end_time, status, total_price, currency, notes, created_at, updated_at, instructor_id) " +
+        String query = "INSERT INTO bookings (booking_id, user_id, resource_id, start_time, end_time, status, total_price, currency, notes, created_at, updated_at, instructorId) " +
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         
         if(booking == null) {
@@ -310,6 +318,7 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
 
     private Booking mapResultSetToBooking(ResultSet resultSet) throws SQLException {
         Booking booking = new Booking();
+        booking.setInstructorId(resultSet.getLong("instructorId"));
         booking.setBookingId(resultSet.getLong("booking_id"));
         booking.setUserId(resultSet.getLong("user_id"));
         booking.setResourceId(resultSet.getLong("resource_id"));

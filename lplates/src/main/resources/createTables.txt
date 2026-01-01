@@ -1,0 +1,33 @@
+CREATE TABLE Bookings (
+    booking_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    instructorId INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    resource_id INTEGER NOT NULL,
+    start_time TIMESTAMP NOT NULL,
+    end_time TIMESTAMP NOT NULL,
+    status TEXT NOT NULL,
+    total_price DECIMAL(10, 2),
+    currency TEXT,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (instructorId) REFERENCES Instructors (instructorId) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS instructors (
+  instructorId INTEGER PRIMARY KEY,
+  licenseId INTEGER,
+  firstName TEXT,
+  lastName TEXT,
+  email TEXT,
+  phoneNumber TEXT,
+  specialization TEXT,
+  transmission TEXT,
+  rating REAL,
+  carMake TEXT,
+  carModel TEXT,
+  locations TEXT,
+  bookings TEXT,
+  createdAt TEXT,
+  updatedAt TEXT
+);
