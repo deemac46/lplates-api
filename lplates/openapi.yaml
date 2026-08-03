@@ -1,0 +1,1215 @@
+openapi: 3.0.3
+info:
+  title: lplates API
+  description: >
+    REST API for the lplates driving-lesson booking platform. Covers user
+    authentication, instructor management, lesson bookings, EDT (Essential
+    Driver Training) progress tracking, instructor pricing, and feedback.
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+tags:
+  - name: Auth
+    description: Public registration and login endpoints
+  - name: Users
+    description: Authenticated user profile endpoints
+  - name: Instructors
+    description: Instructor profile management
+  - name: Lessons
+    description: Lesson booking management
+  - name: EDT Progress
+    description: Essential Driver Training module progress
+  - name: Pricing
+    description: Instructor pricing management
+  - name: Feedback
+    description: Lesson feedback and ratings
+
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid role supplied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Username or email already in use
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Exchange credentials for a JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authenticated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Get the current authenticated user's basic info
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/profile:
+    get:
+      tags: [Users]
+      summary: Get the current user's role-specific profile
+      description: >
+        Returns `LearnerProfile` for LEARNER, `InstructorProfile` for
+        INSTRUCTOR, or a plain `User` for ADMIN.
+      responses:
+        '200':
+          description: Role-specific profile
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/LearnerProfile'
+                  - $ref: '#/components/schemas/InstructorProfile'
+                  - $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/:
+    get:
+      tags: [Users]
+      summary: Get all users (ADMIN only)
+      responses:
+        '200':
+          description: List of all users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /users/{id}:
+    get:
+      tags: [Users]
+      summary: Get basic user info by ID (ADMIN only)
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /users/{id}/profile:
+    get:
+      tags: [Users]
+      summary: Get role-specific profile for any user (ADMIN only)
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: Role-specific profile
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/LearnerProfile'
+                  - $ref: '#/components/schemas/InstructorProfile'
+                  - $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /instructors/:
+    get:
+      tags: [Instructors]
+      summary: Get all instructors
+      responses:
+        '200':
+          description: List of instructors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Instructor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /instructors/{instructorId}:
+    get:
+      tags: [Instructors]
+      summary: Get a single instructor by instructor ID
+      parameters:
+        - $ref: '#/components/parameters/InstructorId'
+      responses:
+        '200':
+          description: Instructor found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Instructor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /instructors/create:
+    post:
+      tags: [Instructors]
+      summary: Create an instructor profile (INSTRUCTOR, ADMIN)
+      description: The `userId` field must match the authenticated user's ID.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Instructor'
+      responses:
+        '200':
+          description: Instructor created successfully
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Instructor created successfully with ID: 4"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          description: Failed to create instructor
+
+  /instructors/{instructorId}/lessons:
+    get:
+      tags: [Instructors]
+      summary: Get an instructor with their full lesson list embedded
+      parameters:
+        - $ref: '#/components/parameters/InstructorId'
+      responses:
+        '200':
+          description: Instructor with lessons
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Instructor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /instructors/pending:
+    get:
+      tags: [Instructors]
+      summary: Get all instructors awaiting approval (ADMIN only)
+      responses:
+        '200':
+          description: List of pending instructors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Instructor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /instructors/{instructorId}/approval:
+    patch:
+      tags: [Instructors]
+      summary: Approve or reject an instructor sign-up (ADMIN only)
+      parameters:
+        - $ref: '#/components/parameters/InstructorId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalStatusRequest'
+      responses:
+        '200':
+          description: Updated instructor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Instructor'
+        '400':
+          description: Invalid approvalStatus value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /instructors/{instructorId}/profile-picture:
+    post:
+      tags: [Instructors]
+      summary: Upload an instructor profile picture (owning INSTRUCTOR or ADMIN)
+      parameters:
+        - $ref: '#/components/parameters/InstructorId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: JPEG, PNG, or WEBP image, max 5MB
+              required: [file]
+      responses:
+        '200':
+          description: Updated instructor with new profilePicture URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Instructor'
+        '400':
+          description: Empty file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Not the owning instructor and not an ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '415':
+          description: Unsupported file type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /lessons/:
+    get:
+      tags: [Lessons]
+      summary: Get all lessons
+      responses:
+        '200':
+          description: List of lessons
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Lesson'
+        '204':
+          description: No lessons found
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /lessons/{lessonId}:
+    get:
+      tags: [Lessons]
+      summary: Get a single lesson by ID
+      parameters:
+        - $ref: '#/components/parameters/LessonId'
+      responses:
+        '200':
+          description: Lesson found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lesson'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /lessons/create:
+    post:
+      tags: [Lessons]
+      summary: Book a new lesson (LEARNER, ADMIN)
+      description: "`studentId` should be the authenticated user's `id`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Lesson'
+      responses:
+        '200':
+          description: Lesson created successfully
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Lesson created successfully with ID: 12"
+        '400':
+          description: Invalid lessonType
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          description: Failed to create lesson
+
+  /lessons/update/{lessonId}:
+    put:
+      tags: [Lessons]
+      summary: Full update of a lesson
+      parameters:
+        - $ref: '#/components/parameters/LessonId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Lesson'
+      responses:
+        '200':
+          description: Updated lesson
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lesson'
+        '400':
+          description: Invalid lessonType
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          description: Update failed
+
+  /lessons/confirm/{lessonId}:
+    post:
+      tags: [Lessons]
+      summary: Set a lesson's status to confirmed
+      parameters:
+        - $ref: '#/components/parameters/LessonId'
+      responses:
+        '200':
+          description: Confirmed lesson
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lesson'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          description: Confirmation failed
+
+  /lessons/pending:
+    get:
+      tags: [Lessons]
+      summary: Get all lessons with status pending
+      responses:
+        '200':
+          description: List of pending lessons
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Lesson'
+        '204':
+          description: No pending lessons found
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /lessons/instructor/{instructorId}:
+    get:
+      tags: [Lessons]
+      summary: Get all lessons for an instructor
+      parameters:
+        - $ref: '#/components/parameters/InstructorId'
+      responses:
+        '200':
+          description: List of lessons
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Lesson'
+        '204':
+          description: No lessons found
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /lessons/student/{studentId}:
+    get:
+      tags: [Lessons]
+      summary: Get all lessons for a student
+      description: Use the authenticated user's `id` as `studentId`.
+      parameters:
+        - $ref: '#/components/parameters/StudentId'
+      responses:
+        '200':
+          description: List of lessons
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Lesson'
+        '204':
+          description: No lessons found
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /edt/:
+    get:
+      tags: [EDT Progress]
+      summary: Get all EDT progress records (all students)
+      responses:
+        '200':
+          description: List of EDT progress records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EdtProgress'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /edt/{id}:
+    get:
+      tags: [EDT Progress]
+      summary: Get a single EDT progress record by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: EDT progress record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EdtProgress'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /edt/create:
+    post:
+      tags: [EDT Progress]
+      summary: Create or upsert an EDT progress record (LEARNER, ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EdtProgress'
+      responses:
+        '201':
+          description: Created EDT progress record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EdtProgress'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /edt/student/{studentId}:
+    get:
+      tags: [EDT Progress]
+      summary: Get all 12 module records for a student, ordered by moduleNumber
+      parameters:
+        - $ref: '#/components/parameters/StudentId'
+      responses:
+        '200':
+          description: List of EDT progress records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EdtProgress'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /edt/student/{studentId}/module/{moduleNumber}:
+    get:
+      tags: [EDT Progress]
+      summary: Get a single module record for a student
+      parameters:
+        - $ref: '#/components/parameters/StudentId'
+        - name: moduleNumber
+          in: path
+          required: true
+          description: EDT module number, 1-12
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+      responses:
+        '200':
+          description: EDT progress record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EdtProgress'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /edt/complete/{studentId}/{moduleNumber}/{lessonId}:
+    put:
+      tags: [EDT Progress]
+      summary: Mark a module as completed and link it to the completing lesson
+      parameters:
+        - $ref: '#/components/parameters/StudentId'
+        - name: moduleNumber
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+        - $ref: '#/components/parameters/LessonId'
+      responses:
+        '200':
+          description: Updated EDT progress record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EdtProgress'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /pricing/create:
+    post:
+      tags: [Pricing]
+      summary: Create an instructor pricing entry (INSTRUCTOR, ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstructorPricing'
+      responses:
+        '200':
+          description: Created pricing entry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstructorPricing'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /pricing/{pricingId}:
+    get:
+      tags: [Pricing]
+      summary: Get a pricing entry by ID
+      parameters:
+        - name: pricingId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Pricing entry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstructorPricing'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Pricing]
+      summary: Delete a pricing entry
+      parameters:
+        - name: pricingId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: Deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /pricing/instructor/{instructorId}:
+    get:
+      tags: [Pricing]
+      summary: Get all pricing entries for an instructor
+      parameters:
+        - $ref: '#/components/parameters/InstructorId'
+      responses:
+        '200':
+          description: List of pricing entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InstructorPricing'
+        '204':
+          description: No pricing entries found
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /feedback/create:
+    post:
+      tags: [Feedback]
+      summary: Create feedback for a lesson
+      description: One feedback per lesson (unique constraint). `rating` is 1-5.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Feedback'
+      responses:
+        '200':
+          description: Created feedback
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Feedback'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /feedback/{feedbackId}:
+    get:
+      tags: [Feedback]
+      summary: Get feedback by ID
+      parameters:
+        - name: feedbackId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Feedback found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Feedback'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /feedback/lesson/{lessonId}:
+    get:
+      tags: [Feedback]
+      summary: Get feedback for a lesson
+      parameters:
+        - $ref: '#/components/parameters/LessonId'
+      responses:
+        '200':
+          description: Feedback found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Feedback'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /feedback/instructor/{instructorId}:
+    get:
+      tags: [Feedback]
+      summary: Get all feedback for an instructor's lessons
+      parameters:
+        - $ref: '#/components/parameters/InstructorId'
+      responses:
+        '200':
+          description: List of feedback
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Feedback'
+        '204':
+          description: No feedback found
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    UserId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    InstructorId:
+      name: instructorId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    LessonId:
+      name: lessonId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    StudentId:
+      name: studentId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Authenticated but not permitted to perform this action
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      example:
+        error: "Invalid username or password"
+
+    Role:
+      type: string
+      enum: [LEARNER, INSTRUCTOR, ADMIN]
+
+    LessonType:
+      type: string
+      enum: [lesson, edt, test_car_hire]
+
+    ApprovalStatus:
+      type: string
+      enum: [pending, approved, rejected]
+
+    RegisterRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          example: john_doe
+        firstName:
+          type: string
+          example: John
+        lastName:
+          type: string
+          example: Doe
+        email:
+          type: string
+          format: email
+          example: john@example.ie
+        password:
+          type: string
+          format: password
+          example: secret123
+        role:
+          $ref: '#/components/schemas/Role'
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          example: john_doe
+        password:
+          type: string
+          format: password
+          example: secret123
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiJ9..."
+        type:
+          type: string
+          example: Bearer
+        userId:
+          type: integer
+          format: int64
+          example: 5
+        username:
+          type: string
+          example: john_doe
+        role:
+          $ref: '#/components/schemas/Role'
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/Role'
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    Instructor:
+      type: object
+      properties:
+        instructorId:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        approvalStatus:
+          $ref: '#/components/schemas/ApprovalStatus'
+        gender:
+          type: string
+        phoneNumber:
+          type: string
+        adiNumber:
+          type: string
+        transmission:
+          type: string
+          example: manual
+        yearsExperience:
+          type: integer
+        rating:
+          type: number
+          format: double
+        carMake:
+          type: string
+        carModel:
+          type: string
+        locations:
+          type: array
+          items:
+            type: string
+        profilePicture:
+          type: string
+          nullable: true
+          description: URL relative to the API base, e.g. /uploads/instructors/1/abc.jpg
+        description:
+          type: string
+        reviewsCount:
+          type: integer
+        agreeTerms:
+          type: boolean
+        offersTestCarHire:
+          type: boolean
+        testCarHirePrice:
+          type: number
+          format: double
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        lessons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Lesson'
+
+    ApprovalStatusRequest:
+      type: object
+      required: [approvalStatus]
+      properties:
+        approvalStatus:
+          $ref: '#/components/schemas/ApprovalStatus'
+
+    Lesson:
+      type: object
+      properties:
+        lessonId:
+          type: integer
+          format: int64
+        instructorId:
+          type: integer
+          format: int64
+        studentId:
+          type: integer
+          format: int64
+        scheduledDate:
+          type: string
+          format: date
+          example: "2026-08-10"
+        scheduledTime:
+          type: string
+          example: "09:00:00"
+        durationMinutes:
+          type: integer
+          example: 60
+        status:
+          type: string
+          example: pending
+        paymentStatus:
+          type: string
+          example: unpaid
+        price:
+          type: number
+          format: double
+          example: 60.00
+        currency:
+          type: string
+          example: EUR
+        lessonType:
+          $ref: '#/components/schemas/LessonType'
+        edtModule:
+          type: string
+        edtCompleted:
+          type: boolean
+        notes:
+          type: string
+        cancellationReason:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    EdtProgress:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        studentId:
+          type: integer
+          format: int64
+        moduleNumber:
+          type: integer
+          minimum: 1
+          maximum: 12
+        moduleName:
+          type: string
+        completed:
+          type: boolean
+        lessonId:
+          type: integer
+          format: int64
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    InstructorPricing:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        instructorId:
+          type: integer
+          format: int64
+        durationMinutes:
+          type: integer
+          example: 60
+        price:
+          type: number
+          format: double
+          example: 60.00
+
+    Feedback:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        lessonId:
+          type: integer
+          format: int64
+        authorId:
+          type: integer
+          format: int64
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    EdtSummary:
+      type: object
+      properties:
+        totalModules:
+          type: integer
+          example: 12
+        completedModules:
+          type: integer
+        remainingModules:
+          type: integer
+        fullyCompleted:
+          type: boolean
+
+    LearnerProfile:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        bookings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Lesson'
+        edtProgress:
+          type: array
+          items:
+            $ref: '#/components/schemas/EdtProgress'
+        edtSummary:
+          $ref: '#/components/schemas/EdtSummary'
+
+    InstructorProfile:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        instructor:
+          $ref: '#/components/schemas/Instructor'

@@ -23,7 +23,6 @@ public class InstructorsServiceImpl implements InstructorsService {
 
     @Override
     public Instructor getInstructorById(Long instructorId) {
-
         return instructorRepository.getInstructorById(instructorId);
     }
 
@@ -33,7 +32,27 @@ public class InstructorsServiceImpl implements InstructorsService {
     }
 
     @Override
-    public Instructor getInstructorWithBookings(Long instructorId) {
-        return instructorRepository.getInstructorWithBookings(instructorId);
+    public Instructor getInstructorWithLessons(Long instructorId) {
+        return instructorRepository.getInstructorWithLessons(instructorId);
+    }
+
+    @Override
+    public Instructor getInstructorByUserId(Long userId) {
+        return instructorRepository.getInstructorByUserId(userId);
+    }
+
+    @Override
+    public List<Instructor> getPendingInstructors() {
+        return instructorRepository.getPendingInstructors();
+    }
+
+    @Override
+    public Instructor updateApprovalStatus(Long instructorId, String approvalStatus) {
+        return instructorRepository.updateApprovalStatus(instructorId, approvalStatus);
+    }
+
+    @Override
+    public Instructor updateProfilePicture(Long instructorId, String profilePicture) {
+        return instructorRepository.updateProfilePicture(instructorId, profilePicture);
     }
 }

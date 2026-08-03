@@ -1,12 +1,12 @@
 package com.dmc.lplates.service;
 
-import com.dmc.lplates.database.repository.BookingRepository;
-import com.dmc.lplates.inbound.models.Booking;
-import com.dmc.lplates.inbound.models.Instructor;
+import java.util.List;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
+import com.dmc.lplates.database.repository.BookingRepository;
+import com.dmc.lplates.inbound.models.Booking;
 
 @Service
 public class BookingServiceImpl implements BookingService {
@@ -18,22 +18,19 @@ public class BookingServiceImpl implements BookingService {
     }
 
     @Override
-    public String createBooking(Booking booking, long instructorId) {
-
-        bookingRepository.insertRecord(booking, instructorId);
-        return String.valueOf(booking.getBookingId());
+    public String createBooking(Booking lesson) {
+        bookingRepository.insertRecord(lesson);
+        return String.valueOf(lesson.getLessonId());
     }
 
     @Override
-    public void cancelBooking() {
-
-
-
+    public Booking updateBooking(Booking lesson) {
+        return bookingRepository.updateBooking(lesson);
     }
 
     @Override
-    public Booking getBookingDetailsById(Long bookingId) {
-        return bookingRepository.getBookingById(bookingId);
+    public Booking getBookingDetailsById(Long lessonId) {
+        return bookingRepository.getBookingById(lessonId);
     }
 
     @Override
@@ -43,15 +40,23 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     public List<Booking> getAllPendingBookings() {
-        return bookingRepository.getAllBookings().stream().filter(booking ->
-                "PENDING".equalsIgnoreCase(booking
-                        .getStatus()))
+        return bookingRepository.getAllBookings().stream()
+                .filter(lesson -> "pending".equalsIgnoreCase(lesson.getStatus()))
                 .toList();
     }
 
     @Override
-    public Booking confirmBooking(Long bookingId) {
+    public List<Booking> getLessonsByInstructorId(long instructorId) {
+        return bookingRepository.getLessonsByInstructorId(instructorId);
+    }
 
-        return bookingRepository.confirmBooking(bookingId);
+    @Override
+    public List<Booking> getLessonsByStudentId(long studentId) {
+        return bookingRepository.getLessonsByStudentId(studentId);
+    }
+
+    @Override
+    public Booking confirmBooking(Long lessonId) {
+        return bookingRepository.confirmBooking(lessonId);
     }
 }

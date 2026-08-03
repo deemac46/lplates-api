@@ -1,16 +1,17 @@
 package com.dmc.lplates.database.repository;
 
-import com.dmc.lplates.inbound.models.Booking;
-import com.dmc.lplates.inbound.models.Instructor;
-
 import java.util.List;
+
+import com.dmc.lplates.inbound.models.Booking;
 
 public interface BookingRepository {
 
-    void insertRecord(Booking booking, long instructorId);
-    Booking getBookingById(long bookingId);
+    void insertRecord(Booking lesson);
+    Booking getBookingById(long lessonId);
     List<Booking> getAllBookings();
-    Booking confirmBooking(Long bookingId);
-
+    List<Booking> getLessonsByInstructorId(long instructorId);
+    List<Booking> getLessonsByStudentId(long studentId);
+    Booking confirmBooking(Long lessonId);
+    Booking updateBooking(Booking lesson);
 
 }

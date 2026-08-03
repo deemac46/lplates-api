@@ -1,33 +1,105 @@
-CREATE TABLE Bookings (
-    booking_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    instructorId INTEGER NOT NULL,
-    user_id INTEGER NOT NULL,
-    resource_id INTEGER NOT NULL,
-    start_time TIMESTAMP NOT NULL,
-    end_time TIMESTAMP NOT NULL,
-    status TEXT NOT NULL,
-    total_price DECIMAL(10, 2),
-    currency TEXT,
-    notes TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (instructorId) REFERENCES Instructors (instructorId) ON DELETE CASCADE
+-- Drop tables (reverse dependency order, so FK-referenced tables are dropped last)
+DROP TABLE IF EXISTS "bookings_edtprogress";
+DROP TABLE IF EXISTS "bookings_feedback";
+DROP TABLE IF EXISTS "bookings_instructorpricing";
+DROP TABLE IF EXISTS "bookings_lesson";
+DROP TABLE IF EXISTS "accounts_instructor";
+DROP TABLE IF EXISTS "accounts_user";
+
+-- Table: accounts_user
+CREATE TABLE IF NOT EXISTS "accounts_user" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "username" VARCHAR(150) NOT NULL UNIQUE,
+    "first_name" VARCHAR(150) NOT NULL DEFAULT '',
+    "last_name" VARCHAR(150) NOT NULL DEFAULT '',
+    "email" VARCHAR(254) NOT NULL UNIQUE,
+    "password" VARCHAR(255) NOT NULL,
+    "role" VARCHAR(20) NOT NULL DEFAULT 'LEARNER',
+    "active" INTEGER NOT NULL DEFAULT 1,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS instructors (
-  instructorId INTEGER PRIMARY KEY,
-  licenseId INTEGER,
-  firstName TEXT,
-  lastName TEXT,
-  email TEXT,
-  phoneNumber TEXT,
-  specialization TEXT,
-  transmission TEXT,
-  rating REAL,
-  carMake TEXT,
-  carModel TEXT,
-  locations TEXT,
-  bookings TEXT,
-  createdAt TEXT,
-  updatedAt TEXT
+-- Table: accounts_instructor
+CREATE TABLE IF NOT EXISTS "accounts_instructor" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "first_name" VARCHAR(150) NOT NULL DEFAULT '',
+    "last_name" VARCHAR(150) NOT NULL DEFAULT '',
+    "email" VARCHAR(254) NOT NULL DEFAULT '',
+    "approval_status" VARCHAR(20) NOT NULL DEFAULT 'pending',
+    "gender" VARCHAR(20) NOT NULL DEFAULT '',
+    "phone_number" VARCHAR(30) NOT NULL DEFAULT '',
+    "adi_number" VARCHAR(80) NULL,
+    "transmission" VARCHAR(32) NULL,
+    "years_experience" INTEGER NULL,
+    "rating" DECIMAL(3, 2) NULL,
+    "car_make" VARCHAR(100) NULL,
+    "car_model" VARCHAR(100) NULL,
+    "locations" TEXT NULL,
+    "profile_picture" VARCHAR(100) NULL,
+    "description" TEXT NULL,
+    "reviews_count" INTEGER NOT NULL DEFAULT 0,
+    "agree_terms" INTEGER NOT NULL DEFAULT 0,
+    "offers_test_car_hire" INTEGER NOT NULL DEFAULT 0,
+    "test_car_hire_price" DECIMAL(6, 2) NULL,
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "user_id" INTEGER NOT NULL DEFAULT 0,
+    "api_instructor_id" INTEGER NULL UNIQUE
+);
+
+-- Table: bookings_lesson
+CREATE TABLE IF NOT EXISTS "bookings_lesson" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "scheduled_date" DATE NOT NULL,
+    "scheduled_time" TIME NOT NULL,
+    "duration_minutes" INTEGER NOT NULL DEFAULT 60,
+    "status" VARCHAR(20) NOT NULL DEFAULT 'pending',
+    "payment_status" VARCHAR(20) NOT NULL DEFAULT 'unpaid',
+    "price" DECIMAL(6, 2) NOT NULL DEFAULT 0.00,
+    "currency" VARCHAR(3) NOT NULL DEFAULT 'EUR',
+    "lesson_type" VARCHAR(20) NOT NULL DEFAULT 'lesson',
+    "notes" TEXT NOT NULL DEFAULT '',
+    "edt_module" VARCHAR(10) NOT NULL DEFAULT '',
+    "edt_completed" INTEGER NOT NULL DEFAULT 0,
+    "cancellation_reason" TEXT NOT NULL DEFAULT '',
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "instructor_id" INTEGER NULL,
+    "student_id" INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY ("instructor_id") REFERENCES "accounts_instructor" ("id")
+);
+
+-- Table: bookings_instructorpricing
+CREATE TABLE IF NOT EXISTS "bookings_instructorpricing" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "duration_minutes" INTEGER NOT NULL,
+    "price" DECIMAL(6, 2) NOT NULL,
+    "instructor_id" INTEGER NOT NULL,
+    "api_pricing_id" INTEGER NULL UNIQUE,
+    UNIQUE ("instructor_id", "duration_minutes"),
+    FOREIGN KEY ("instructor_id") REFERENCES "accounts_instructor" ("id")
+);
+
+-- Table: bookings_feedback
+CREATE TABLE IF NOT EXISTS "bookings_feedback" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "rating" INTEGER NOT NULL,
+    "comment" TEXT NOT NULL DEFAULT '',
+    "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "author_id" INTEGER NOT NULL,
+    "lesson_id" INTEGER NOT NULL UNIQUE,
+    FOREIGN KEY ("lesson_id") REFERENCES "bookings_lesson" ("id")
+);
+
+-- Table: bookings_edtprogress
+CREATE TABLE IF NOT EXISTS "bookings_edtprogress" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "student_id" INTEGER NOT NULL,
+    "module_number" INTEGER NOT NULL,
+    "module_name" VARCHAR(100) NOT NULL DEFAULT '',
+    "completed" INTEGER NOT NULL DEFAULT 0,
+    "lesson_id" INTEGER NULL,
+    "completed_at" DATETIME NULL,
+    UNIQUE ("student_id", "module_number"),
+    FOREIGN KEY ("lesson_id") REFERENCES "bookings_lesson" ("id")
 );

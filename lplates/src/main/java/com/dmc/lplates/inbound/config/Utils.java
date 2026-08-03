@@ -1,4 +1,4 @@
-package com.identicum.config;
+package com.dmc.lplates.inbound.config;
 
 public class Utils
 {

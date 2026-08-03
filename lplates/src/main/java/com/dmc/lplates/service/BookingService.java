@@ -1,17 +1,18 @@
 package com.dmc.lplates.service;
 
-import com.dmc.lplates.inbound.models.Booking;
-import com.dmc.lplates.inbound.models.Instructor;
-
 import java.util.List;
+
+import com.dmc.lplates.inbound.models.Booking;
 
 public interface BookingService {
 
-    String createBooking(Booking booking, long instructorId);
-    void cancelBooking();
-    Booking getBookingDetailsById(Long bookingId);
+    String createBooking(Booking lesson);
+    Booking updateBooking(Booking lesson);
+    Booking getBookingDetailsById(Long lessonId);
     List<Booking> getAllBookings();
     List<Booking> getAllPendingBookings();
-    Booking confirmBooking(Long bookingId);
+    List<Booking> getLessonsByInstructorId(long instructorId);
+    List<Booking> getLessonsByStudentId(long studentId);
+    Booking confirmBooking(Long lessonId);
 
 }
