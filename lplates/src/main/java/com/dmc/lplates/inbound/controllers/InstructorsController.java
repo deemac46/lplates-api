@@ -71,7 +71,7 @@ public class InstructorsController {
 
     @GetMapping("/")
     public ResponseEntity<List<Instructor>> getInstructors() {
-        List<Instructor> instructors = instructorsService.getAllInstructors();
+        List<Instructor> instructors = instructorsService.getAvailableInstructors();
         if (instructors != null) {
             return ResponseEntity.ok(instructors);
         } else {

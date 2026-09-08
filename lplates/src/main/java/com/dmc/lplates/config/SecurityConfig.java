@@ -69,6 +69,7 @@ public class SecurityConfig {
                 // Instructors - anyone authenticated can read; only INSTRUCTOR/ADMIN can create
                 .requestMatchers(HttpMethod.GET, "/instructors/pending").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.PATCH, "/instructors/*/approval").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.PATCH, "/instructors/*/availability").hasAnyRole("ADMIN", "INSTRUCTOR")
                 .requestMatchers(HttpMethod.POST, "/instructors/*/profile-picture").hasAnyRole("ADMIN", "INSTRUCTOR")
                 .requestMatchers(HttpMethod.GET, "/instructors/**").authenticated()
                 .requestMatchers(HttpMethod.POST, "/instructors/create").hasAnyRole("ADMIN", "INSTRUCTOR")

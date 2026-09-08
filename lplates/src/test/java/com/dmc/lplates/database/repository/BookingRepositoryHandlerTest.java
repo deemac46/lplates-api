@@ -125,10 +125,12 @@ class BookingRepositoryHandlerTest {
         Long instructorId = repository.createInstructor(instructor);
         assertNotNull(instructorId);
         assertTrue(repository.getInstructorById(instructorId).getAvailable());
+        assertEquals(1, repository.getAvailableInstructors().size());
 
         Instructor updated = repository.updateAvailability(instructorId, false);
         assertNotNull(updated);
         assertFalse(updated.getAvailable());
         assertFalse(repository.getInstructorById(instructorId).getAvailable());
+        assertTrue(repository.getAvailableInstructors().isEmpty());
     }
 }

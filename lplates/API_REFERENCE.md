@@ -182,7 +182,7 @@ Returns role-specific profile for any user.
 ## 3. Instructor Endpoints  *(authenticated)*
 
 ### GET /instructors/
-Returns all instructors.
+Returns instructors currently accepting bookings (`available: true`).
 
 ### GET /instructors/{instructorId}
 Returns a single instructor by their instructor ID (not user ID).

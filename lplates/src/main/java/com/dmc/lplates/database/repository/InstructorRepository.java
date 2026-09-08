@@ -8,6 +8,8 @@ public interface InstructorRepository {
 
     List<Instructor> getAllInstructors();
 
+    List<Instructor> getAvailableInstructors();
+
     Instructor getInstructorById(Long instructorId);
 
     Long createInstructor(Instructor instructor);

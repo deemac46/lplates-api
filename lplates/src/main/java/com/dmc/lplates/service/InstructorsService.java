@@ -8,6 +8,8 @@ public interface InstructorsService {
 
     List<Instructor> getAllInstructors();
 
+    List<Instructor> getAvailableInstructors();
+
     Instructor getInstructorById(Long instructorId);
 
     Instructor createInstructor(Instructor instructor);

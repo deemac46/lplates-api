@@ -23,6 +23,11 @@ public class InstructorsServiceImpl implements InstructorsService {
     }
 
     @Override
+    public List<Instructor> getAvailableInstructors() {
+        return instructorRepository.getAvailableInstructors();
+    }
+
+    @Override
     public Instructor getInstructorById(Long instructorId) {
         return instructorRepository.getInstructorById(instructorId);
     }

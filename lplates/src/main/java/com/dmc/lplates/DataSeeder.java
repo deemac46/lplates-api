@@ -440,6 +440,7 @@ public class DataSeeder implements ApplicationRunner {
         i.setDescription(description);
         i.setReviewsCount(reviewsCount);
         i.setAgreeTerms(true);
+        i.setAvailable(true);
         i.setOffersTestCarHire(offersTestCarHire);
         i.setTestCarHirePrice(testCarHirePrice);
         i.setHasAdaptedVehicle(hasAdaptedVehicle);

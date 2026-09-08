@@ -591,6 +591,25 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
     }
 
     @Override
+    public List<Instructor> getAvailableInstructors() {
+        String query = "SELECT * FROM \"" + INSTRUCTORS_TABLE + "\" WHERE is_available = 1";
+        List<Instructor> instructors = new ArrayList<>();
+
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(query);
+             ResultSet resultSet = statement.executeQuery()) {
+
+            while (resultSet.next()) {
+                instructors.add(mapResultSetToInstructor(resultSet));
+            }
+        } catch (SQLException e) {
+            System.err.println("Error retrieving available instructors: " + e.getMessage());
+        }
+
+        return instructors;
+    }
+
+    @Override
     public Instructor getInstructorById(Long instructorId) {
         String query = "SELECT * FROM \"" + INSTRUCTORS_TABLE + "\" WHERE id = ?";
         try (Connection connection = connect();
