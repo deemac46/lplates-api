@@ -6,7 +6,7 @@ import com.dmc.lplates.inbound.models.Booking;
 
 public interface BookingService {
 
-    String createBooking(Booking lesson);
+    Booking createBooking(Booking lesson);
     Booking updateBooking(Booking lesson);
     Booking getBookingDetailsById(Long lessonId);
     List<Booking> getAllBookings();
@@ -14,5 +14,6 @@ public interface BookingService {
     List<Booking> getLessonsByInstructorId(long instructorId);
     List<Booking> getLessonsByStudentId(long studentId);
     Booking confirmBooking(Long lessonId);
+    Booking completeBooking(Booking lesson, Integer edtModuleNumber, String edtNote, Long loggedByInstructorId);
 
 }

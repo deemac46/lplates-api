@@ -9,9 +9,14 @@ import java.sql.SQLException;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 
 import com.dmc.lplates.inbound.models.Booking;
@@ -26,12 +31,19 @@ import jakarta.annotation.PostConstruct;
 public class BookingRepositoryHandler implements BookingRepository, InstructorRepository,
         InstructorPricingRepository, FeedbackRepository, EdtProgressRepository {
 
-    private static final String DB_URL = "jdbc:sqlite:C:/Users/deemc/Documents/Workspace/databases/sql_lite/lplates_bookings.db";
+    private final String dbUrl;
     private static final String LESSONS_TABLE = "bookings_lesson";
     private static final String INSTRUCTORS_TABLE = "accounts_instructor";
+    private static final String USERS_TABLE = "accounts_customuser";
     private static final String PRICING_TABLE = "bookings_instructorpricing";
     private static final String FEEDBACK_TABLE = "bookings_feedback";
     private static final String EDT_PROGRESS_TABLE = "bookings_edtprogress";
+    // Django reads these columns as ISO text; JDBC setDate/setTime would store epoch millis it cannot parse.
+    private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss");
+
+    public BookingRepositoryHandler(@Value("${app.database.url}") String dbUrl) {
+        this.dbUrl = dbUrl;
+    }
 
     @PostConstruct
     public void migrateSchema() {
@@ -42,12 +54,8 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
                 "first_name" VARCHAR(150) NOT NULL DEFAULT '',
                 "last_name" VARCHAR(150) NOT NULL DEFAULT '',
                 "email" VARCHAR(254) NOT NULL DEFAULT '',
-                "approval_status" VARCHAR(20) NOT NULL DEFAULT 'pending',
-                "gender" VARCHAR(20) NOT NULL DEFAULT '',
-                "phone_number" VARCHAR(30) NOT NULL DEFAULT '',
                 "adi_number" VARCHAR(80) NULL,
                 "transmission" VARCHAR(32) NULL,
-                "years_experience" INTEGER NULL,
                 "rating" DECIMAL(3, 2) NULL,
                 "car_make" VARCHAR(100) NULL,
                 "car_model" VARCHAR(100) NULL,
@@ -55,13 +63,26 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
                 "profile_picture" VARCHAR(100) NULL,
                 "description" TEXT NULL,
                 "reviews_count" INTEGER NOT NULL DEFAULT 0,
-                "agree_terms" INTEGER NOT NULL DEFAULT 0,
-                "offers_test_car_hire" INTEGER NOT NULL DEFAULT 0,
-                "test_car_hire_price" DECIMAL(6, 2) NULL,
                 "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 "updated_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 "user_id" INTEGER NOT NULL DEFAULT 0,
-                "api_instructor_id" INTEGER NULL UNIQUE
+                "agree_terms" INTEGER NOT NULL DEFAULT 0,
+                "approval_status" VARCHAR(20) NOT NULL DEFAULT 'pending',
+                "gender" VARCHAR(20) NOT NULL DEFAULT '',
+                "phone_number" VARCHAR(30) NOT NULL DEFAULT '',
+                "years_experience" INTEGER NULL,
+                "offers_test_car_hire" INTEGER NOT NULL DEFAULT 0,
+                "test_car_hire_price" DECIMAL(6, 2) NULL,
+                "api_instructor_id" INTEGER NULL UNIQUE,
+                "latitude" DECIMAL(9, 6) NULL,
+                "longitude" DECIMAL(9, 6) NULL,
+                "areas_covered" VARCHAR(500) NOT NULL DEFAULT '',
+                "county" VARCHAR(50) NOT NULL DEFAULT 'Dublin',
+                "is_available" INTEGER NOT NULL DEFAULT 1,
+                "has_adapted_vehicle" INTEGER NOT NULL DEFAULT 0,
+                "adapted_vehicle_types" TEXT NOT NULL DEFAULT '',
+                "disability_experience" TEXT NOT NULL DEFAULT '',
+                "disability_training" INTEGER NOT NULL DEFAULT 0
             )
             """,
             """
@@ -114,7 +135,19 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
                 "completed" INTEGER NOT NULL DEFAULT 0,
                 "lesson_id" INTEGER NULL,
                 "completed_at" DATETIME NULL,
+                "note" TEXT NOT NULL DEFAULT '',
+                "logged_by_instructor_id" INTEGER NULL,
+                "logged_at" DATETIME NULL,
                 UNIQUE ("student_id", "module_number")
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS "accounts_countywaitlist" (
+                "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                "email" VARCHAR(254) NOT NULL,
+                "county" VARCHAR(50) NOT NULL,
+                "role" VARCHAR(20) NOT NULL DEFAULT 'learner',
+                "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         };
@@ -127,15 +160,86 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
                     System.err.println("DDL error: " + e.getMessage());
                 }
             }
+            ensureColumn(connection, EDT_PROGRESS_TABLE, "note", "TEXT NOT NULL DEFAULT ''");
+            ensureColumn(connection, EDT_PROGRESS_TABLE, "logged_by_instructor_id", "INTEGER NULL");
+            ensureColumn(connection, EDT_PROGRESS_TABLE, "logged_at", "DATETIME NULL");
+            ensureColumn(connection, INSTRUCTORS_TABLE, "is_available", "INTEGER NOT NULL DEFAULT 1");
+            normaliseLegacyLessonTimes(connection);
         } catch (SQLException e) {
             System.err.println("Schema migration failed: " + e.getMessage());
+        }
+    }
+
+    /** Rewrites epoch-millis scheduled_date/scheduled_time values (from older JDBC writes) as ISO text. */
+    private void normaliseLegacyLessonTimes(Connection connection) throws SQLException {
+        String select = "SELECT id, scheduled_date, scheduled_time FROM \"" + LESSONS_TABLE + "\" " +
+                "WHERE typeof(scheduled_date) = 'integer' OR typeof(scheduled_time) = 'integer'";
+        String update = "UPDATE \"" + LESSONS_TABLE + "\" SET scheduled_date = ?, scheduled_time = ? WHERE id = ?";
+        int fixed = 0;
+        try (PreparedStatement selectStmt = connection.prepareStatement(select);
+             ResultSet rs = selectStmt.executeQuery();
+             PreparedStatement updateStmt = connection.prepareStatement(update)) {
+            while (rs.next()) {
+                LocalDate date = readLocalDate(rs, "scheduled_date");
+                LocalTime time = readLocalTime(rs, "scheduled_time");
+                updateStmt.setString(1, date != null ? date.toString() : null);
+                updateStmt.setString(2, time != null ? time.format(TIME_FORMAT) : null);
+                updateStmt.setLong(3, rs.getLong("id"));
+                fixed += updateStmt.executeUpdate();
+            }
+        }
+        if (fixed > 0) {
+            System.out.println("Normalised scheduled_date/scheduled_time on " + fixed + " lesson row(s).");
+        }
+    }
+
+    private static LocalDate readLocalDate(ResultSet rs, String column) throws SQLException {
+        Object value = rs.getObject(column);
+        if (value == null) return null;
+        if (value instanceof Number number) return new Date(number.longValue()).toLocalDate();
+        String text = value.toString().trim();
+        if (text.isEmpty()) return null;
+        try {
+            return LocalDate.parse(text);
+        } catch (DateTimeParseException e) {
+            return new Date(Long.parseLong(text)).toLocalDate();
+        }
+    }
+
+    private static LocalTime readLocalTime(ResultSet rs, String column) throws SQLException {
+        Object value = rs.getObject(column);
+        if (value == null) return null;
+        if (value instanceof Number number) return new Time(number.longValue()).toLocalTime();
+        String text = value.toString().trim();
+        if (text.isEmpty()) return null;
+        try {
+            return LocalTime.parse(text);
+        } catch (DateTimeParseException e) {
+            return new Time(Long.parseLong(text)).toLocalTime();
+        }
+    }
+
+    private void ensureColumn(Connection connection, String tableName, String columnName, String columnDefinition)
+            throws SQLException {
+        String query = "PRAGMA table_info(\"" + tableName + "\")";
+        try (PreparedStatement statement = connection.prepareStatement(query);
+             ResultSet resultSet = statement.executeQuery()) {
+            while (resultSet.next()) {
+                if (columnName.equalsIgnoreCase(resultSet.getString("name"))) {
+                    return;
+                }
+            }
+        }
+        String alter = "ALTER TABLE \"" + tableName + "\" ADD COLUMN \"" + columnName + "\" " + columnDefinition;
+        try (PreparedStatement statement = connection.prepareStatement(alter)) {
+            statement.executeUpdate();
         }
     }
 
     public Connection connect() {
         Connection connection = null;
         try {
-            connection = DriverManager.getConnection(DB_URL);
+            connection = DriverManager.getConnection(dbUrl);
         } catch (SQLException e) {
             System.err.println("Failed to connect to the database: " + e.getMessage());
         }
@@ -159,8 +263,8 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
 
             java.time.LocalDate scheduledDate = lesson.getScheduledDate() != null ? lesson.getScheduledDate() : java.time.LocalDate.now();
             java.time.LocalTime scheduledTime = lesson.getScheduledTime() != null ? lesson.getScheduledTime() : java.time.LocalTime.MIDNIGHT;
-            statement.setDate(1, Date.valueOf(scheduledDate));
-            statement.setTime(2, Time.valueOf(scheduledTime));
+            statement.setString(1, scheduledDate.toString());
+            statement.setString(2, scheduledTime.format(TIME_FORMAT));
             statement.setInt(3, lesson.getDurationMinutes() > 0 ? lesson.getDurationMinutes() : 60);
             statement.setString(4, lesson.getStatus() != null ? lesson.getStatus() : "pending");
             statement.setString(5, lesson.getPaymentStatus() != null ? lesson.getPaymentStatus() : "unpaid");
@@ -301,6 +405,52 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
     }
 
     @Override
+    public Booking completeBooking(Booking lesson, Integer edtModuleNumber, String edtNote, Long loggedByInstructorId) {
+        String query = "UPDATE \"" + LESSONS_TABLE + "\" SET status = ?, edt_module = ?, " +
+                "edt_completed = ?, updated_at = ? WHERE id = ?";
+        Timestamp loggedAt = new Timestamp(System.currentTimeMillis());
+        String edtModule = edtModuleNumber != null ? String.format("edt_%02d", edtModuleNumber) : lesson.getEdtModule();
+        boolean edtCompleted = edtModuleNumber != null || Boolean.TRUE.equals(lesson.getEdtCompleted());
+
+        try (Connection connection = connect()) {
+            connection.setAutoCommit(false);
+            try (PreparedStatement statement = connection.prepareStatement(query)) {
+                statement.setString(1, "completed");
+                statement.setString(2, edtModule != null ? edtModule : "");
+                statement.setInt(3, edtCompleted ? 1 : 0);
+                statement.setTimestamp(4, loggedAt);
+                statement.setLong(5, lesson.getLessonId());
+                int rowsUpdated = statement.executeUpdate();
+                if (rowsUpdated == 0) {
+                    connection.rollback();
+                    return null;
+                }
+            }
+
+            if (edtModuleNumber != null) {
+                EdtProgress progress = new EdtProgress();
+                progress.setStudentId(lesson.getStudentId());
+                progress.setModuleNumber(edtModuleNumber);
+                progress.setModuleName(edtModule);
+                progress.setCompleted(true);
+                progress.setLessonId(lesson.getLessonId());
+                progress.setCompletedAt(loggedAt);
+                progress.setNote(edtNote);
+                progress.setLoggedByInstructorId(loggedByInstructorId);
+                progress.setLoggedAt(loggedAt);
+                upsertEdtProgress(connection, progress);
+            }
+
+            connection.commit();
+        } catch (SQLException e) {
+            System.err.println("Error completing lesson: " + e.getMessage());
+            return null;
+        }
+
+        return getBookingById(lesson.getLessonId());
+    }
+
+    @Override
     public Booking updateBooking(Booking lesson) {
         String query = "UPDATE \"" + LESSONS_TABLE + "\" SET " +
                 "scheduled_date = ?, scheduled_time = ?, duration_minutes = ?, " +
@@ -312,8 +462,8 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement(query)) {
 
-            statement.setDate(1, lesson.getScheduledDate() != null ? Date.valueOf(lesson.getScheduledDate()) : null);
-            statement.setTime(2, lesson.getScheduledTime() != null ? Time.valueOf(lesson.getScheduledTime()) : null);
+            statement.setString(1, lesson.getScheduledDate() != null ? lesson.getScheduledDate().toString() : null);
+            statement.setString(2, lesson.getScheduledTime() != null ? lesson.getScheduledTime().format(TIME_FORMAT) : null);
             statement.setInt(3, lesson.getDurationMinutes());
             statement.setString(4, lesson.getStatus());
             statement.setString(5, lesson.getPaymentStatus());
@@ -345,10 +495,8 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
     private Booking mapResultSetToLesson(ResultSet rs) throws SQLException {
         Booking lesson = new Booking();
         lesson.setLessonId(rs.getLong("id"));
-        Date scheduledDate = rs.getDate("scheduled_date");
-        if (scheduledDate != null) lesson.setScheduledDate(scheduledDate.toLocalDate());
-        Time scheduledTime = rs.getTime("scheduled_time");
-        if (scheduledTime != null) lesson.setScheduledTime(scheduledTime.toLocalTime());
+        lesson.setScheduledDate(readLocalDate(rs, "scheduled_date"));
+        lesson.setScheduledTime(readLocalTime(rs, "scheduled_time"));
         lesson.setDurationMinutes(rs.getInt("duration_minutes"));
         lesson.setStatus(rs.getString("status"));
         lesson.setPaymentStatus(rs.getString("payment_status"));
@@ -379,6 +527,44 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
             return null;
         }
         return Long.parseLong(text);
+    }
+
+    private Integer getNullableInteger(ResultSet rs, String column) throws SQLException {
+        Object value = rs.getObject(column);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        String text = value.toString().trim();
+        if (text.isEmpty() || "null".equalsIgnoreCase(text)) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(text);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private Double getNullableDouble(ResultSet rs, String column) throws SQLException {
+        Object value = rs.getObject(column);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        String text = value.toString().trim();
+        if (text.isEmpty() || "null".equalsIgnoreCase(text)) {
+            return null;
+        }
+        try {
+            return Double.parseDouble(text);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     // =========================================================================
@@ -426,12 +612,12 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
     }
 
     @Override
-    public String createInstructor(Instructor instructor) {
+    public Long createInstructor(Instructor instructor) {
         String query = "INSERT INTO \"" + INSTRUCTORS_TABLE + "\" " +
                 "(first_name, last_name, email, approval_status, gender, phone_number, adi_number, transmission, years_experience, " +
-                "rating, car_make, car_model, locations, profile_picture, description, reviews_count, " +
-                "agree_terms, offers_test_car_hire, test_car_hire_price, created_at, updated_at, user_id) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                "rating, car_make, car_model, locations, county, areas_covered, latitude, longitude, profile_picture, description, reviews_count, " +
+                "agree_terms, offers_test_car_hire, test_car_hire_price, has_adapted_vehicle, adapted_vehicle_types, disability_experience, disability_training, created_at, updated_at, user_id, is_available) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement(query, PreparedStatement.RETURN_GENERATED_KEYS)) {
@@ -449,15 +635,24 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
             statement.setString(11, instructor.getCarMake());
             statement.setString(12, instructor.getCarModel());
             statement.setString(13, instructor.getLocations() != null ? String.join(",", instructor.getLocations()) : null);
-            statement.setString(14, instructor.getProfilePicture());
-            statement.setString(15, instructor.getDescription());
-            statement.setInt(16, instructor.getReviewsCount() != null ? instructor.getReviewsCount().intValue() : 0);
-            statement.setInt(17, Boolean.TRUE.equals(instructor.getAgreeTerms()) ? 1 : 0);
-            statement.setInt(18, Boolean.TRUE.equals(instructor.getOffersTestCarHire()) ? 1 : 0);
-            statement.setBigDecimal(19, instructor.getTestCarHirePrice());
-            statement.setTimestamp(20, instructor.getCreatedAt() != null ? instructor.getCreatedAt() : new Timestamp(System.currentTimeMillis()));
-            statement.setTimestamp(21, instructor.getUpdatedAt() != null ? instructor.getUpdatedAt() : new Timestamp(System.currentTimeMillis()));
-            statement.setLong(22, instructor.getUserId() != null ? instructor.getUserId().longValue() : 0L);
+            statement.setString(14, instructor.getCounty());
+            statement.setString(15, instructor.getAreasCovered());
+            statement.setObject(16, instructor.getLatitude());
+            statement.setObject(17, instructor.getLongitude());
+            statement.setString(18, instructor.getProfilePicture());
+            statement.setString(19, instructor.getDescription());
+            statement.setInt(20, instructor.getReviewsCount() != null ? instructor.getReviewsCount().intValue() : 0);
+            statement.setInt(21, Boolean.TRUE.equals(instructor.getAgreeTerms()) ? 1 : 0);
+            statement.setInt(22, Boolean.TRUE.equals(instructor.getOffersTestCarHire()) ? 1 : 0);
+            statement.setBigDecimal(23, instructor.getTestCarHirePrice());
+            statement.setInt(24, Boolean.TRUE.equals(instructor.getHasAdaptedVehicle()) ? 1 : 0);
+            statement.setString(25, instructor.getAdaptedVehicleTypes());
+            statement.setString(26, instructor.getDisabilityExperience());
+            statement.setInt(27, Boolean.TRUE.equals(instructor.getDisabilityTraining()) ? 1 : 0);
+            statement.setTimestamp(28, instructor.getCreatedAt() != null ? instructor.getCreatedAt() : new Timestamp(System.currentTimeMillis()));
+            statement.setTimestamp(29, instructor.getUpdatedAt() != null ? instructor.getUpdatedAt() : new Timestamp(System.currentTimeMillis()));
+            statement.setLong(30, instructor.getUserId() != null ? instructor.getUserId().longValue() : 0L);
+            statement.setInt(31, Boolean.FALSE.equals(instructor.getAvailable()) ? 0 : 1);
 
             int rowsInserted = statement.executeUpdate();
             if (rowsInserted > 0) {
@@ -467,13 +662,13 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
                     }
                 }
                 System.out.println("Instructor created successfully with ID: " + instructor.getInstructorId());
-                return "Instructor created successfully.";
+                return instructor.getInstructorId();
             }
         } catch (SQLException e) {
             System.err.println("Error creating instructor: " + e.getMessage());
         }
 
-        return "Failed to create instructor.";
+        return null;
     }
 
     @Override
@@ -545,6 +740,29 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
     }
 
     @Override
+    public Instructor updateAvailability(Long instructorId, boolean available) {
+        String query = "UPDATE \"" + INSTRUCTORS_TABLE + "\" SET is_available = ?, updated_at = ? WHERE id = ?";
+
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(query)) {
+
+            statement.setInt(1, available ? 1 : 0);
+            statement.setTimestamp(2, new Timestamp(System.currentTimeMillis()));
+            statement.setLong(3, instructorId);
+
+            int rowsUpdated = statement.executeUpdate();
+            if (rowsUpdated > 0) {
+                return getInstructorById(instructorId);
+            }
+            System.err.println("No instructor found with ID: " + instructorId);
+            return null;
+        } catch (SQLException e) {
+            System.err.println("Error updating availability: " + e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
     public Instructor updateProfilePicture(Long instructorId, String profilePicture) {
         String query = "UPDATE \"" + INSTRUCTORS_TABLE + "\" SET profile_picture = ?, updated_at = ? WHERE id = ?";
 
@@ -579,18 +797,27 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
         instructor.setPhoneNumber(rs.getString("phone_number"));
         instructor.setAdiNumber(rs.getString("adi_number"));
         instructor.setTransmission(rs.getString("transmission"));
-        instructor.setYearsExperience(rs.getObject("years_experience", Integer.class));
-        instructor.setRating(rs.getObject("rating", Double.class));
+        instructor.setYearsExperience(getNullableInteger(rs, "years_experience"));
+        instructor.setRating(getNullableDouble(rs, "rating"));
         instructor.setCarMake(rs.getString("car_make"));
         instructor.setCarModel(rs.getString("car_model"));
         String locations = rs.getString("locations");
         instructor.setLocations(locations != null ? List.of(locations.split(",")) : new ArrayList<>());
+        instructor.setCounty(rs.getString("county"));
+        instructor.setAreasCovered(rs.getString("areas_covered"));
+        instructor.setLatitude(getNullableDouble(rs, "latitude"));
+        instructor.setLongitude(getNullableDouble(rs, "longitude"));
         instructor.setProfilePicture(rs.getString("profile_picture"));
         instructor.setDescription(rs.getString("description"));
         instructor.setReviewsCount(rs.getInt("reviews_count"));
         instructor.setAgreeTerms(rs.getInt("agree_terms") == 1);
+        instructor.setAvailable(rs.getInt("is_available") == 1);
         instructor.setOffersTestCarHire(rs.getInt("offers_test_car_hire") == 1);
         instructor.setTestCarHirePrice(rs.getBigDecimal("test_car_hire_price"));
+        instructor.setHasAdaptedVehicle(rs.getInt("has_adapted_vehicle") == 1);
+        instructor.setAdaptedVehicleTypes(rs.getString("adapted_vehicle_types"));
+        instructor.setDisabilityExperience(rs.getString("disability_experience"));
+        instructor.setDisabilityTraining(rs.getInt("disability_training") == 1);
         instructor.setCreatedAt(rs.getTimestamp("created_at"));
         instructor.setUpdatedAt(rs.getTimestamp("updated_at"));
         return instructor;
@@ -799,20 +1026,19 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
     @Override
     public EdtProgress insertEdtProgress(EdtProgress progress) {
         String query = "INSERT INTO \"" + EDT_PROGRESS_TABLE + "\" " +
-                "(student_id, module_number, module_name, completed, lesson_id, completed_at) " +
-                "VALUES (?, ?, ?, ?, ?, ?) " +
+                "(student_id, module_number, module_name, completed, lesson_id, completed_at, " +
+                "note, logged_by_instructor_id, logged_at) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) " +
                 "ON CONFLICT(student_id, module_number) DO UPDATE SET " +
-                "completed = excluded.completed, lesson_id = excluded.lesson_id, completed_at = excluded.completed_at";
+                "module_name = excluded.module_name, completed = excluded.completed, " +
+                "lesson_id = excluded.lesson_id, completed_at = excluded.completed_at, " +
+                "note = excluded.note, logged_by_instructor_id = excluded.logged_by_instructor_id, " +
+                "logged_at = excluded.logged_at";
 
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement(query, PreparedStatement.RETURN_GENERATED_KEYS)) {
 
-            statement.setLong(1, progress.getStudentId());
-            statement.setInt(2, progress.getModuleNumber());
-            statement.setString(3, progress.getModuleName() != null ? progress.getModuleName() : "");
-            statement.setInt(4, Boolean.TRUE.equals(progress.getCompleted()) ? 1 : 0);
-            statement.setObject(5, progress.getLessonId());
-            statement.setTimestamp(6, progress.getCompletedAt());
+            bindEdtProgress(statement, progress);
 
             statement.executeUpdate();
             try (ResultSet generatedKeys = statement.getGeneratedKeys()) {
@@ -877,18 +1103,23 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
     }
 
     @Override
-    public EdtProgress markModuleCompleted(long studentId, int moduleNumber, long lessonId) {
-        String query = "UPDATE \"" + EDT_PROGRESS_TABLE + "\" SET completed = 1, lesson_id = ?, completed_at = ? " +
-                "WHERE student_id = ? AND module_number = ?";
+    public EdtProgress markModuleCompleted(long studentId, int moduleNumber, long lessonId,
+                                           String note, Long loggedByInstructorId) {
+        Timestamp loggedAt = new Timestamp(System.currentTimeMillis());
+        EdtProgress progress = new EdtProgress();
+        progress.setStudentId(studentId);
+        progress.setModuleNumber(moduleNumber);
+        progress.setModuleName(String.format("edt_%02d", moduleNumber));
+        progress.setCompleted(true);
+        progress.setLessonId(lessonId);
+        progress.setCompletedAt(loggedAt);
+        progress.setNote(note);
+        progress.setLoggedByInstructorId(loggedByInstructorId);
+        progress.setLoggedAt(loggedAt);
 
         try (Connection connection = connect();
-             PreparedStatement statement = connection.prepareStatement(query)) {
-
-            statement.setLong(1, lessonId);
-            statement.setTimestamp(2, new Timestamp(System.currentTimeMillis()));
-            statement.setLong(3, studentId);
-            statement.setInt(4, moduleNumber);
-
+             PreparedStatement statement = connection.prepareStatement(edtProgressUpsertQuery())) {
+            bindEdtProgress(statement, progress);
             statement.executeUpdate();
         } catch (SQLException e) {
             System.err.println("Error marking EDT module completed: " + e.getMessage());
@@ -923,6 +1154,40 @@ public class BookingRepositoryHandler implements BookingRepository, InstructorRe
         p.setCompleted(rs.getInt("completed") == 1);
         p.setLessonId(rs.getObject("lesson_id", Long.class));
         p.setCompletedAt(rs.getTimestamp("completed_at"));
+        p.setNote(rs.getString("note"));
+        p.setLoggedByInstructorId(rs.getObject("logged_by_instructor_id", Long.class));
+        p.setLoggedAt(rs.getTimestamp("logged_at"));
         return p;
+    }
+
+    private String edtProgressUpsertQuery() {
+        return "INSERT INTO \"" + EDT_PROGRESS_TABLE + "\" " +
+                "(student_id, module_number, module_name, completed, lesson_id, completed_at, " +
+                "note, logged_by_instructor_id, logged_at) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+                "ON CONFLICT(student_id, module_number) DO UPDATE SET " +
+                "module_name = excluded.module_name, completed = excluded.completed, " +
+                "lesson_id = excluded.lesson_id, completed_at = excluded.completed_at, " +
+                "note = excluded.note, logged_by_instructor_id = excluded.logged_by_instructor_id, " +
+                "logged_at = excluded.logged_at";
+    }
+
+    private void upsertEdtProgress(Connection connection, EdtProgress progress) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(edtProgressUpsertQuery())) {
+            bindEdtProgress(statement, progress);
+            statement.executeUpdate();
+        }
+    }
+
+    private void bindEdtProgress(PreparedStatement statement, EdtProgress progress) throws SQLException {
+        statement.setLong(1, progress.getStudentId());
+        statement.setInt(2, progress.getModuleNumber());
+        statement.setString(3, progress.getModuleName() != null ? progress.getModuleName() : "");
+        statement.setInt(4, Boolean.TRUE.equals(progress.getCompleted()) ? 1 : 0);
+        statement.setObject(5, progress.getLessonId());
+        statement.setTimestamp(6, progress.getCompletedAt());
+        statement.setString(7, progress.getNote() != null ? progress.getNote() : "");
+        statement.setObject(8, progress.getLoggedByInstructorId());
+        statement.setTimestamp(9, progress.getLoggedAt());
     }
 }

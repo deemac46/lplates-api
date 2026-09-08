@@ -1,8 +1,8 @@
 package com.dmc.lplates.database.repository;
 
-import com.dmc.lplates.inbound.models.Instructor;
-
 import java.util.List;
+
+import com.dmc.lplates.inbound.models.Instructor;
 
 public interface InstructorRepository {
 
@@ -10,7 +10,7 @@ public interface InstructorRepository {
 
     Instructor getInstructorById(Long instructorId);
 
-    String createInstructor(Instructor instructor);
+    Long createInstructor(Instructor instructor);
 
     Instructor getInstructorWithLessons(Long instructorId);
 
@@ -19,6 +19,8 @@ public interface InstructorRepository {
     List<Instructor> getPendingInstructors();
 
     Instructor updateApprovalStatus(Long instructorId, String approvalStatus);
+
+    Instructor updateAvailability(Long instructorId, boolean available);
 
     Instructor updateProfilePicture(Long instructorId, String profilePicture);
 }

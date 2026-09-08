@@ -1,5 +1,8 @@
 package com.dmc.lplates.database.repository;
 
+import com.dmc.lplates.inbound.models.Role;
+import com.dmc.lplates.inbound.models.User;
+import jakarta.annotation.PostConstruct;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -8,25 +11,22 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
-
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Repository;
-
-import com.dmc.lplates.inbound.models.Role;
-import com.dmc.lplates.inbound.models.User;
-
-import jakarta.annotation.PostConstruct;
 
 @Repository
 public class UserRepositoryHandler implements UserRepository {
 
-    private static final String DB_URL = "jdbc:sqlite:C:/Users/deemc/Documents/Workspace/databases/sql_lite/lplates_bookings.db";
+    private final String dbUrl;
     private static final String USERS_TABLE = "accounts_user";
 
     private final PasswordEncoder passwordEncoder;
 
-    public UserRepositoryHandler(PasswordEncoder passwordEncoder) {
+    public UserRepositoryHandler(PasswordEncoder passwordEncoder,
+                                 @Value("${app.database.url}") String dbUrl) {
         this.passwordEncoder = passwordEncoder;
+        this.dbUrl = dbUrl;
     }
 
     @PostConstruct
@@ -68,7 +68,7 @@ public class UserRepositoryHandler implements UserRepository {
     }
 
     private Connection connect() throws SQLException {
-        return DriverManager.getConnection(DB_URL);
+        return DriverManager.getConnection(dbUrl);
     }
 
     @Override

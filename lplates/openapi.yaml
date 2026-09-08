@@ -309,6 +309,38 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /instructors/{instructorId}/availability:
+    patch:
+      tags: [Instructors]
+      summary: Quickly toggle whether the instructor is available for bookings (owning INSTRUCTOR or ADMIN)
+      parameters:
+        - $ref: '#/components/parameters/InstructorId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvailabilityRequest'
+      responses:
+        '200':
+          description: Updated instructor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Instructor'
+        '400':
+          description: Missing available value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /instructors/{instructorId}/profile-picture:
     post:
       tags: [Instructors]
@@ -464,6 +496,37 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           description: Confirmation failed
+
+  /lessons/{lessonId}/complete:
+    post:
+      tags: [Lessons]
+      summary: Complete a lesson and optionally log EDT progress
+      description: Marks the lesson completed. If `edtModuleNumber` is provided, the learner's EDT progress is created or updated with server-derived instructor provenance.
+      parameters:
+        - $ref: '#/components/parameters/LessonId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompleteLessonRequest'
+      responses:
+        '200':
+          description: Completed lesson and optional EDT progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompleteLessonResponse'
+        '400':
+          description: Invalid EDT module or request body
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Invalid lesson status transition or EDT mismatch
+        '500':
+          description: Completion failed
 
   /lessons/pending:
     get:
@@ -1035,12 +1098,54 @@ components:
           type: integer
         agreeTerms:
           type: boolean
+        available:
+          type: boolean
+          default: true
+          description: Whether the instructor is currently accepting bookings
         offersTestCarHire:
           type: boolean
         testCarHirePrice:
           type: number
           format: double
           nullable: true
+        county:
+          type: string
+          example: Dublin
+          description: Primary county for instruction (Dublin-focused launch)
+        areasCovered:
+          type: string
+          example: "Dublin City Centre, Temple Bar, Smithfield"
+          description: Comma-separated areas within the county
+        latitude:
+          type: number
+          format: double
+          nullable: true
+          example: 53.3498
+          description: Approximate latitude for map display (privacy-safe)
+        longitude:
+          type: number
+          format: double
+          nullable: true
+          example: -6.2603
+          description: Approximate longitude for map display (privacy-safe)
+        hasAdaptedVehicle:
+          type: boolean
+          default: false
+          description: Vehicle has adaptations for learners with disabilities
+        adaptedVehicleTypes:
+          type: string
+          nullable: true
+          example: "Hand controls, left-foot accelerator"
+          description: Types of adaptations available
+        disabilityExperience:
+          type: string
+          nullable: true
+          example: "Hearing impairments, autism, ADHD"
+          description: Experience teaching learners with specific needs
+        disabilityTraining:
+          type: boolean
+          default: false
+          description: Completed specialized training for teaching learners with disabilities
         createdAt:
           type: string
           format: date-time
@@ -1058,6 +1163,13 @@ components:
       properties:
         approvalStatus:
           $ref: '#/components/schemas/ApprovalStatus'
+
+    AvailabilityRequest:
+      type: object
+      required: [available]
+      properties:
+        available:
+          type: boolean
 
     Lesson:
       type: object
@@ -1137,6 +1249,39 @@ components:
           type: string
           format: date-time
           nullable: true
+        note:
+          type: string
+          nullable: true
+        loggedByInstructorId:
+          type: integer
+          format: int64
+          nullable: true
+        loggedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    CompleteLessonRequest:
+      type: object
+      properties:
+        edtModuleNumber:
+          type: integer
+          minimum: 1
+          maximum: 12
+          nullable: true
+        edtNote:
+          type: string
+          nullable: true
+
+    CompleteLessonResponse:
+      type: object
+      properties:
+        lesson:
+          $ref: '#/components/schemas/Lesson'
+        edtProgress:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/EdtProgress'
 
     InstructorPricing:
       type: object

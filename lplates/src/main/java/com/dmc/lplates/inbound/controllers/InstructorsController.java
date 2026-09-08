@@ -1,18 +1,5 @@
 package com.dmc.lplates.inbound.controllers;
 
-import com.dmc.lplates.inbound.dtos.ApprovalStatusDto;
-import com.dmc.lplates.inbound.models.Instructor;
-import com.dmc.lplates.inbound.models.Role;
-import com.dmc.lplates.inbound.models.User;
-import com.dmc.lplates.service.InstructorsServiceImpl;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,6 +8,30 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.dmc.lplates.inbound.dtos.ApprovalStatusDto;
+import com.dmc.lplates.inbound.dtos.AvailabilityDto;
+import com.dmc.lplates.inbound.models.Instructor;
+import com.dmc.lplates.inbound.models.Role;
+import com.dmc.lplates.inbound.models.User;
+import com.dmc.lplates.service.BusinessValidationService;
+import com.dmc.lplates.service.InstructorsServiceImpl;
+import com.dmc.lplates.service.ResourceAuthorizationService;
 
 @RestController
 @RequestMapping("/instructors")
@@ -34,12 +45,18 @@ public class InstructorsController {
     );
 
     InstructorsServiceImpl instructorsService;
+    ResourceAuthorizationService authorizationService;
+    BusinessValidationService validationService;
 
     @Value("${app.upload.dir:uploads}")
     private String uploadDir;
 
-    public InstructorsController(InstructorsServiceImpl instructorsService) {
+    public InstructorsController(InstructorsServiceImpl instructorsService,
+                                 ResourceAuthorizationService authorizationService,
+                                 BusinessValidationService validationService) {
         this.instructorsService = instructorsService;
+        this.authorizationService = authorizationService;
+        this.validationService = validationService;
     }
 
     @GetMapping("/{instructorId}")
@@ -69,13 +86,13 @@ public class InstructorsController {
     }
 
     @PostMapping("/create")
-    public ResponseEntity<String> createInstructor(@RequestBody Instructor instructor) {
-        String result = instructorsService.createInstructor(instructor);
-        if (result != null) {
-            return ResponseEntity.ok("Instructor created successfully with ID: " + result);
-        } else {
-            return ResponseEntity.status(500).body("Failed to create Instructor");
-        }
+    public ResponseEntity<Instructor> createInstructor(@RequestBody Instructor instructor,
+                                                        Authentication authentication) {
+        User currentUser = (User) authentication.getPrincipal();
+        instructor.setUserId(currentUser.getId());
+        validationService.validateNewInstructor(currentUser.getId());
+        Instructor created = instructorsService.createInstructor(instructor);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
     /** PATCH /instructors/{instructorId}/approval — approve/reject an instructor. ADMIN only. */
@@ -89,6 +106,24 @@ public class InstructorsController {
         }
 
         Instructor updated = instructorsService.updateApprovalStatus(instructorId, status);
+        if (updated != null) {
+            return ResponseEntity.ok(updated);
+        } else {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    /** PATCH /instructors/{instructorId}/availability — quickly toggle booking availability. Owning INSTRUCTOR or ADMIN. */
+    @PatchMapping("/{instructorId}/availability")
+    public ResponseEntity<?> updateAvailability(@PathVariable Long instructorId,
+                                                 @RequestBody AvailabilityDto dto,
+                                                 Authentication authentication) {
+        if (dto.getAvailable() == null) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "available is required"));
+        }
+        authorizationService.requireOwnInstructor(instructorId, authorizationService.currentUser(authentication));
+        Instructor updated = instructorsService.updateAvailability(instructorId, dto.getAvailable());
         if (updated != null) {
             return ResponseEntity.ok(updated);
         } else {
@@ -150,7 +185,9 @@ public class InstructorsController {
     }
 
     @GetMapping("/{instructorId}/lessons")
-    public ResponseEntity<Instructor> getLessonsForInstructor(@PathVariable Long instructorId) {
+    public ResponseEntity<Instructor> getLessonsForInstructor(@PathVariable Long instructorId,
+                                                               Authentication authentication) {
+        authorizationService.requireOwnInstructor(instructorId, authorizationService.currentUser(authentication));
         Instructor instructor = instructorsService.getInstructorWithLessons(instructorId);
         if (instructor != null) {
             return ResponseEntity.ok(instructor);

@@ -8,7 +8,10 @@ import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
@@ -20,11 +23,13 @@ import com.dmc.lplates.inbound.models.Booking;
 import com.dmc.lplates.inbound.models.EdtProgress;
 import com.dmc.lplates.inbound.models.Feedback;
 import com.dmc.lplates.inbound.models.Instructor;
+import com.dmc.lplates.inbound.models.InstructorPricing;
 import com.dmc.lplates.inbound.models.Role;
 import com.dmc.lplates.inbound.models.User;
 import com.dmc.lplates.service.BookingService;
 import com.dmc.lplates.service.EdtProgressService;
 import com.dmc.lplates.service.FeedbackService;
+import com.dmc.lplates.service.InstructorPricingService;
 import com.dmc.lplates.service.InstructorsService;
 import com.dmc.lplates.service.UserService;
 
@@ -35,21 +40,35 @@ public class DataSeeder implements ApplicationRunner {
     private final BookingService bookingService;
     private final FeedbackService feedbackService;
     private final EdtProgressService edtProgressService;
+        private final InstructorPricingService pricingService;
     private final UserService userService;
     private final PasswordEncoder passwordEncoder;
+    private final String dbUrl;
+
+        private static final Map<Integer, BigDecimal> DEFAULT_PRICING_TIERS = Map.of(
+            30, new BigDecimal("35.00"),
+            45, new BigDecimal("50.00"),
+            60, new BigDecimal("60.00"),
+            90, new BigDecimal("85.00"),
+            120, new BigDecimal("110.00")
+        );
 
     @Value("${mockdata.enabled:false}")
     private boolean mockDataEnabled;
 
     public DataSeeder(InstructorsService instructorsService, BookingService bookingService,
                       FeedbackService feedbackService, EdtProgressService edtProgressService,
-                      UserService userService, PasswordEncoder passwordEncoder) {
+                      InstructorPricingService pricingService,
+                      UserService userService, PasswordEncoder passwordEncoder,
+                      @Value("${app.database.url}") String dbUrl) {
         this.instructorsService = instructorsService;
         this.bookingService = bookingService;
         this.feedbackService = feedbackService;
         this.edtProgressService = edtProgressService;
+        this.pricingService = pricingService;
         this.userService = userService;
         this.passwordEncoder = passwordEncoder;
+        this.dbUrl = dbUrl;
     }
 
     @Override
@@ -65,6 +84,7 @@ public class DataSeeder implements ApplicationRunner {
                 .anyMatch(booking -> booking.getInstructorId() != null);
 
         if (hasInstructorSeedData && hasLessonRows && hasLessonRowsWithInstructorIds) {
+            seedMissingInstructorPricing();
             System.out.println("DataSeeder: mock data already present, skipping seed.");
             return;
         }
@@ -78,14 +98,47 @@ public class DataSeeder implements ApplicationRunner {
             resetMockLessonData();
         }
 
+        seedMissingInstructorPricing();
         seedLessons();
         seedFeedback();
         seedEdtProgress();
     }
 
+    private void seedMissingInstructorPricing() {
+        int createdPricingRows = 0;
+        for (Instructor instructor : instructorsService.getAllInstructors()) {
+            if (instructor.getInstructorId() == null || !"approved".equalsIgnoreCase(instructor.getApprovalStatus())) {
+                continue;
+            }
+
+            Set<Integer> existingDurations = new HashSet<>();
+            for (InstructorPricing existing : pricingService.getPricingByInstructorId(instructor.getInstructorId())) {
+                if (existing.getDurationMinutes() != null) {
+                    existingDurations.add(existing.getDurationMinutes());
+                }
+            }
+
+            for (Map.Entry<Integer, BigDecimal> tier : DEFAULT_PRICING_TIERS.entrySet()) {
+                if (existingDurations.contains(tier.getKey())) {
+                    continue;
+                }
+                InstructorPricing pricing = new InstructorPricing();
+                pricing.setInstructorId(instructor.getInstructorId());
+                pricing.setDurationMinutes(tier.getKey());
+                pricing.setPrice(tier.getValue());
+                pricingService.createPricing(pricing);
+                createdPricingRows++;
+            }
+        }
+
+        if (createdPricingRows > 0) {
+            System.out.println("DataSeeder: backfilled " + createdPricingRows + " instructor pricing rows.");
+        }
+    }
+
     private void resetMockLessonData() {
         String[] tables = {"bookings_feedback", "bookings_edtprogress", "bookings_lesson"};
-        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:C:/Users/deemc/Documents/Workspace/databases/sql_lite/lplates_bookings.db");
+        try (Connection connection = DriverManager.getConnection(dbUrl);
              Statement statement = connection.createStatement()) {
             for (String table : tables) {
                 statement.executeUpdate("DELETE FROM \"" + table + "\"");
@@ -103,35 +156,35 @@ public class DataSeeder implements ApplicationRunner {
         List<Instructor> instructors = List.of(
 
             // --- Dublin (12) ---
-            instructor(101L, "ADI-001", "approved", "male",   "Seán",     "Murphy",      "sean.murphy@lplates.ie",        "0851234567", "manual",    8,  4.8, "Toyota",     "Corolla", "Drumcondra,Glasnevin,Phibsborough",         "Experienced manual instructor in North Dublin",   42, false, null),
-            instructor(102L, "ADI-002", "approved", "female", "Aoife",    "Kelly",       "aoife.kelly@lplates.ie",        "0852345678", "automatic", 5,  4.6, "Volkswagen", "Golf",    "Rathmines,Rathgar,Terenure",                "Automatic specialist in South Dublin",            28, true,  new BigDecimal("150.00")),
-            instructor(103L, "ADI-003", "approved", "male",   "Ciarán",   "O'Brien",     "ciaran.obrien@lplates.ie",      "0853456789", "both",      12, 4.9, "Ford",       "Focus",   "Clontarf,Raheny,Dollymount",                "Top-rated instructor covering North Dublin coast", 71, true,  new BigDecimal("200.00")),
-            instructor(104L, "ADI-004", "approved", "female", "Niamh",    "Walsh",       "niamh.walsh@lplates.ie",        "0854567890", "manual",    3,  4.2, "Hyundai",    "i20",     "Swords,Malahide,Portmarnock",               "North County Dublin specialist",                  15, false, null),
-            instructor(105L, "ADI-005", "approved", "male",   "Pádraig",  "Byrne",       "padraig.byrne@lplates.ie",      "0855678901", "manual",    10, 4.7, "Skoda",      "Fabia",   "Tallaght,Rathfarnham,Templeogue",           "South West Dublin expert with 10 years experience",55, false, null),
-            instructor(106L, "ADI-006", "approved", "female", "Siobhán",  "Doyle",       "siobhan.doyle@lplates.ie",      "0856789012", "automatic", 6,  4.4, "Renault",    "Clio",    "Blanchardstown,Castleknock,Carpenterstown","West Dublin automatic lessons",                   30, true,  new BigDecimal("160.00")),
-            instructor(107L, "ADI-007", "approved", "male",   "Declan",   "Fitzgerald",  "declan.fitzgerald@lplates.ie",  "0857890123", "both",      9,  4.5, "Nissan",     "Micra",   "Dún Laoghaire,Blackrock,Monkstown",         "South County Dublin instructor",                  38, true,  new BigDecimal("180.00")),
-            instructor(108L, "ADI-008", "approved", "female", "Aisling",  "Ryan",        "aisling.ryan@lplates.ie",       "0858901234", "manual",    4,  4.3, "Toyota",     "Yaris",   "Finglas,Cabra,Glasnevin",                   "North West Dublin lessons",                       20, false, null),
-            instructor(109L, "ADI-009", "approved", "male",   "Tomás",    "Lynch",       "tomas.lynch@lplates.ie",        "0859012345", "manual",    7,  4.6, "Ford",       "Fiesta",  "Lucan,Clondalkin,Palmerstown",              "West Dublin manual instructor",                   35, false, null),
-            instructor(110L, "ADI-010", "approved", "female", "Caoimhe",  "O'Sullivan",  "caoimhe.osullivan@lplates.ie",  "0850123456", "automatic", 11, 4.8, "Volkswagen", "Polo",    "Ballsbridge,Donnybrook,Sandymount",         "Southside Dublin automatic specialist",            60, true,  new BigDecimal("200.00")),
-            instructor(111L, "ADI-011", "approved", "male",   "Ronan",    "McCarthy",    "ronan.mccarthy@lplates.ie",     "0861234567", "manual",    2,  4.1, "Opel",       "Corsa",   "Santry,Beaumont,Artane",                    "North Dublin beginner-friendly instructor",        8,  false, null),
-            instructor(112L, "ADI-012", "approved", "female", "Éadaoin",  "Brennan",     "eadaoin.brennan@lplates.ie",    "0862345678", "both",      8,  4.5, "Peugeot",    "208",     "Crumlin,Walkinstown,Drimnagh",              "South Dublin dual-transmission instructor",        41, false, null),
+            instructor(101L, "ADI-001", "approved", "male",   "Seán",     "Murphy",      "sean.murphy@lplates.ie",        "0851234567", "manual",    8,  4.8, "Toyota",     "Corolla", "Drumcondra,Glasnevin,Phibsborough",         "Dublin", "Drumcondra, Glasnevin, Phibsborough", 53.3698, -6.2603, "Experienced manual instructor in North Dublin",   42, false, null, false, null, null, false),
+            instructor(102L, "ADI-002", "approved", "female", "Aoife",    "Kelly",       "aoife.kelly@lplates.ie",        "0852345678", "automatic", 5,  4.6, "Volkswagen", "Golf",    "Rathmines,Rathgar,Terenure",                "Dublin", "Rathmines, Rathgar, Terenure", 53.3178, -6.2639, "Automatic specialist in South Dublin",            28, true,  new BigDecimal("150.00"), false, null, null, false),
+            instructor(103L, "ADI-003", "approved", "male",   "Ciarán",   "O'Brien",     "ciaran.obrien@lplates.ie",      "0853456789", "both",      12, 4.9, "Ford",       "Focus",   "Clontarf,Raheny,Dollymount",                "Dublin", "Clontarf, Raheny, Dollymount", 53.3712, -6.1951, "Top-rated instructor covering North Dublin coast", 71, true,  new BigDecimal("200.00"), false, null, "Hearing impairments, visual impairments", true),
+            instructor(104L, "ADI-004", "approved", "female", "Niamh",    "Walsh",       "niamh.walsh@lplates.ie",        "0854567890", "manual",    3,  4.2, "Hyundai",    "i20",     "Swords,Malahide,Portmarnock",               "Dublin", "Swords, Malahide, Portmarnock", 53.4597, -6.2181, "North County Dublin specialist",                  15, false, null, false, null, null, false),
+            instructor(105L, "ADI-005", "approved", "male",   "Pádraig",  "Byrne",       "padraig.byrne@lplates.ie",      "0855678901", "manual",    10, 4.7, "Skoda",      "Fabia",   "Tallaght,Rathfarnham,Templeogue",           "Dublin", "Tallaght, Rathfarnham, Templeogue", 53.2859, -6.3586, "South West Dublin expert with 10 years experience",55, false, null, false, null, null, false),
+            instructor(106L, "ADI-006", "approved", "female", "Siobhán",  "Doyle",       "siobhan.doyle@lplates.ie",      "0856789012", "automatic", 6,  4.4, "Renault",    "Clio",    "Blanchardstown,Castleknock,Carpenterstown","Dublin", "Blanchardstown, Castleknock, Carpenterstown", 53.3879, -6.3784, "West Dublin automatic lessons",                   30, true,  new BigDecimal("160.00"), false, null, null, false),
+            instructor(107L, "ADI-007", "approved", "male",   "Declan",   "Fitzgerald",  "declan.fitzgerald@lplates.ie",  "0857890123", "both",      9,  4.5, "Nissan",     "Micra",   "Dún Laoghaire,Blackrock,Monkstown",         "Dublin", "Dún Laoghaire, Blackrock, Monkstown", 53.2941, -6.1337, "South County Dublin instructor",                  38, true,  new BigDecimal("180.00"), false, null, null, false),
+            instructor(108L, "ADI-008", "approved", "female", "Aisling",  "Ryan",        "aisling.ryan@lplates.ie",       "0858901234", "manual",    4,  4.3, "Toyota",     "Yaris",   "Finglas,Cabra,Glasnevin",                   "Dublin", "Finglas, Cabra, Glasnevin", 53.3892, -6.2997, "North West Dublin lessons",                       20, false, null, false, null, null, false),
+            instructor(109L, "ADI-009", "approved", "male",   "Tomás",    "Lynch",       "tomas.lynch@lplates.ie",        "0859012345", "manual",    7,  4.6, "Ford",       "Fiesta",  "Lucan,Clondalkin,Palmerstown",              "Dublin", "Lucan, Clondalkin, Palmerstown", 53.3529, -6.4486, "West Dublin manual instructor",                   35, false, null, false, null, null, false),
+            instructor(110L, "ADI-010", "approved", "female", "Caoimhe",  "O'Sullivan",  "caoimhe.osullivan@lplates.ie",  "0850123456", "automatic", 11, 4.8, "Volkswagen", "Polo",    "Ballsbridge,Donnybrook,Sandymount",         "Dublin", "Ballsbridge, Donnybrook, Sandymount", 53.3294, -6.2281, "Southside Dublin automatic specialist",            60, true,  new BigDecimal("200.00"), true, "Hand controls, left-foot accelerator", "Autism, ADHD", true),
+            instructor(111L, "ADI-011", "approved", "male",   "Ronan",    "McCarthy",    "ronan.mccarthy@lplates.ie",     "0861234567", "manual",    2,  4.1, "Opel",       "Corsa",   "Santry,Beaumont,Artane",                    "Dublin", "Santry, Beaumont, Artane", 53.3948, -6.2451, "North Dublin beginner-friendly instructor",        8,  false, null, false, null, null, false),
+            instructor(112L, "ADI-012", "approved", "female", "Éadaoin",  "Brennan",     "eadaoin.brennan@lplates.ie",    "0862345678", "both",      8,  4.5, "Peugeot",    "208",     "Crumlin,Walkinstown,Drimnagh",              "Dublin", "Crumlin, Walkinstown, Drimnagh", 53.3235, -6.3168, "South Dublin dual-transmission instructor",        41, false, null, false, null, null, false),
 
             // --- Galway (7) ---
-            instructor(113L, "ADI-013", "approved", "female", "Máire",    "Connolly",    "maire.connolly@lplates.ie",     "0863456789", "manual",    6,  4.7, "Toyota",     "Corolla", "Salthill,Galway City,Knocknacarra",         "Galway city and seaside lessons",                 33, false, null),
-            instructor(114L, "ADI-014", "approved", "male",   "Fearghus", "O'Connor",    "fearghus.oconnor@lplates.ie",   "0864567890", "automatic", 9,  4.5, "Volkswagen", "Golf",    "Oranmore,Athenry,Claregalway",              "East Galway automatic instructor",                45, true,  new BigDecimal("170.00")),
-            instructor(115L, "ADI-015", "approved", "female", "Sorcha",   "Burke",       "sorcha.burke@lplates.ie",       "0865678901", "manual",    4,  4.3, "Hyundai",    "i20",     "Tuam,Claregalway,Headford",                 "North Galway area instructor",                    18, false, null),
-            instructor(116L, "ADI-016", "approved", "male",   "Cormac",   "Flaherty",    "cormac.flaherty@lplates.ie",    "0866789012", "both",      14, 4.9, "Ford",       "Focus",   "Galway City,Salthill,Renmore",              "Senior Galway city instructor",                   78, true,  new BigDecimal("220.00")),
-            instructor(117L, "ADI-017", "approved", "female", "Bríd",     "Naughton",    "brid.naughton@lplates.ie",      "0867890123", "manual",    5,  4.4, "Skoda",      "Fabia",   "Ballinasloe,Loughrea,Portumna",             "East Galway rural instructor",                    22, false, null),
-            instructor(118L, "ADI-018", "approved", "male",   "Tadhg",    "Madden",      "tadhg.madden@lplates.ie",       "0868901234", "automatic", 7,  4.6, "Renault",    "Clio",    "Oranmore,Galway City,Merlin Park",          "South Galway automatic lessons",                  37, true,  new BigDecimal("160.00")),
-            instructor(119L, "ADI-019", "pending",  "female", "Orla",     "King",        "orla.king@lplates.ie",          "0869012345", "manual",    3,  4.2, "Nissan",     "Micra",   "Galway City,Knocknacarra,Westside",         "Galway city beginner-friendly instructor",         11, false, null),
+            instructor(113L, "ADI-013", "approved", "female", "Máire",    "Connolly",    "maire.connolly@lplates.ie",     "0863456789", "manual",    6,  4.7, "Toyota",     "Corolla", "Salthill,Galway City,Knocknacarra",         "Galway", "Salthill, Galway City, Knocknacarra", 53.2707, -9.0568, "Galway city and seaside lessons",                 33, false, null, false, null, null, false),
+            instructor(114L, "ADI-014", "approved", "male",   "Fearghus", "O'Connor",    "fearghus.oconnor@lplates.ie",   "0864567890", "automatic", 9,  4.5, "Volkswagen", "Golf",    "Oranmore,Athenry,Claregalway",              "Galway", "Oranmore, Athenry, Claregalway", 53.2649, -8.9234, "East Galway automatic instructor",                45, true,  new BigDecimal("170.00"), false, null, null, false),
+            instructor(115L, "ADI-015", "approved", "female", "Sorcha",   "Burke",       "sorcha.burke@lplates.ie",       "0865678901", "manual",    4,  4.3, "Hyundai",    "i20",     "Tuam,Claregalway,Headford",                 "Galway", "Tuam, Claregalway, Headford", 53.5145, -8.8512, "North Galway area instructor",                    18, false, null, false, null, null, false),
+            instructor(116L, "ADI-016", "approved", "male",   "Cormac",   "Flaherty",    "cormac.flaherty@lplates.ie",    "0866789012", "both",      14, 4.9, "Ford",       "Focus",   "Galway City,Salthill,Renmore",              "Galway", "Galway City, Salthill, Renmore", 53.2707, -9.0491, "Senior Galway city instructor",                   78, true,  new BigDecimal("220.00"), false, null, "Autism, learning difficulties", true),
+            instructor(117L, "ADI-017", "approved", "female", "Bríd",     "Naughton",    "brid.naughton@lplates.ie",      "0867890123", "manual",    5,  4.4, "Skoda",      "Fabia",   "Ballinasloe,Loughrea,Portumna",             "Galway", "Ballinasloe, Loughrea, Portumna", 53.3277, -8.2213, "East Galway rural instructor",                    22, false, null, false, null, null, false),
+            instructor(118L, "ADI-018", "approved", "male",   "Tadhg",    "Madden",      "tadhg.madden@lplates.ie",       "0868901234", "automatic", 7,  4.6, "Renault",    "Clio",    "Oranmore,Galway City,Merlin Park",          "Galway", "Oranmore, Galway City, Merlin Park", 53.2649, -9.0153, "South Galway automatic lessons",                  37, true,  new BigDecimal("160.00"), false, null, null, false),
+            instructor(119L, "ADI-019", "pending",  "female", "Orla",     "King",        "orla.king@lplates.ie",          "0869012345", "manual",    3,  4.2, "Nissan",     "Micra",   "Galway City,Knocknacarra,Westside",         "Galway", "Galway City, Knocknacarra, Westside", 53.2768, -9.0738, "Galway city beginner-friendly instructor",         11, false, null, false, null, null, false),
 
             // --- Cork (6) ---
-            instructor(120L, "ADI-020", "approved", "male",   "Donal",    "Collins",     "donal.collins@lplates.ie",      "0871234567", "manual",    10, 4.7, "Toyota",     "Corolla", "Cork City,Bishopstown,Wilton",              "Cork city manual driving instructor",              53, false, null),
-            instructor(121L, "ADI-021", "approved", "female", "Catriona", "O'Callaghan", "catriona.ocallaghan@lplates.ie","0872345678", "automatic", 8,  4.5, "Volkswagen", "Polo",    "Ballincollig,Togher,Bishopstown",           "West Cork automatic specialist",                  40, true,  new BigDecimal("160.00")),
-            instructor(122L, "ADI-022", "approved", "female", "Fionnuala","Cronin",      "fionnuala.cronin@lplates.ie",   "0873456789", "both",      6,  4.4, "Ford",       "Fiesta",  "Cobh,Carrigaline,Passage West",             "Harbour towns dual-transmission instructor",       26, false, null),
-            instructor(123L, "ADI-023", "approved", "male",   "Seamus",   "Healy",       "seamus.healy@lplates.ie",       "0874567890", "manual",    11, 4.8, "Skoda",      "Octavia", "Midleton,Carrigaline,Cobh",                 "East Cork experienced instructor",                 58, true,  new BigDecimal("190.00")),
-            instructor(124L, "ADI-024", "approved", "female", "Mairéad",  "O'Driscoll",  "mairead.odriscoll@lplates.ie",  "0875678901", "automatic", 5,  4.3, "Hyundai",    "i30",     "Cork City,Blackrock,Mahon",                 "Cork south docklands automatic lessons",           23, false, null),
-            instructor(125L, "ADI-025", "approved", "male",   "Liam",     "Horgan",      "liam.horgan@lplates.ie",        "0876789012", "manual",    7,  4.6, "Opel",       "Astra",   "Bishopstown,Wilton,Model Farm Road",        "West Cork city instructor",                        36, false, null)
+            instructor(120L, "ADI-020", "approved", "male",   "Donal",    "Collins",     "donal.collins@lplates.ie",      "0871234567", "manual",    10, 4.7, "Toyota",     "Corolla", "Cork City,Bishopstown,Wilton",              "Cork", "Cork City, Bishopstown, Wilton", 51.8985, -8.4756, "Cork city manual driving instructor",              53, false, null, false, null, null, false),
+            instructor(121L, "ADI-021", "approved", "female", "Catriona", "O'Callaghan", "catriona.ocallaghan@lplates.ie","0872345678", "automatic", 8,  4.5, "Volkswagen", "Polo",    "Ballincollig,Togher,Bishopstown",           "Cork", "Ballincollig, Togher, Bishopstown", 51.8874, -8.5888, "West Cork automatic specialist",                  40, true,  new BigDecimal("160.00"), false, null, null, false),
+            instructor(122L, "ADI-022", "approved", "female", "Fionnuala","Cronin",      "fionnuala.cronin@lplates.ie",   "0873456789", "both",      6,  4.4, "Ford",       "Fiesta",  "Cobh,Carrigaline,Passage West",             "Cork", "Cobh, Carrigaline, Passage West", 51.8508, -8.3025, "Harbour towns dual-transmission instructor",       26, false, null, false, null, null, false),
+            instructor(123L, "ADI-023", "approved", "male",   "Seamus",   "Healy",       "seamus.healy@lplates.ie",       "0874567890", "manual",    11, 4.8, "Skoda",      "Octavia", "Midleton,Carrigaline,Cobh",                 "Cork", "Midleton, Carrigaline, Cobh", 51.9152, -8.1789, "East Cork experienced instructor",                 58, true,  new BigDecimal("190.00"), false, null, null, false),
+            instructor(124L, "ADI-024", "approved", "female", "Mairéad",  "O'Driscoll",  "mairead.odriscoll@lplates.ie",  "0875678901", "automatic", 5,  4.3, "Hyundai",    "i30",     "Cork City,Blackrock,Mahon",                 "Cork", "Cork City, Blackrock, Mahon", 51.8974, -8.4136, "Cork south docklands automatic lessons",           23, false, null, false, null, null, false),
+            instructor(125L, "ADI-025", "approved", "male",   "Liam",     "Horgan",      "liam.horgan@lplates.ie",        "0876789012", "manual",    7,  4.6, "Opel",       "Astra",   "Bishopstown,Wilton,Model Farm Road",        "Cork", "Bishopstown, Wilton, Model Farm Road", 51.8815, -8.5295, "West Cork city instructor",                        36, false, null, false, null, null, false)
         );
 
         instructors.forEach(instructorsService::createInstructor);
@@ -360,8 +413,11 @@ public class DataSeeder implements ApplicationRunner {
                                   String firstName, String lastName, String email,
                                   String phoneNumber, String transmission, int yearsExperience, double rating,
                                   String carMake, String carModel, String locationsCsv,
+                                  String county, String areasCovered, Double latitude, Double longitude,
                                   String description, int reviewsCount,
-                                  boolean offersTestCarHire, BigDecimal testCarHirePrice) {
+                                  boolean offersTestCarHire, BigDecimal testCarHirePrice,
+                                  boolean hasAdaptedVehicle, String adaptedVehicleTypes,
+                                  String disabilityExperience, boolean disabilityTraining) {
         Instructor i = new Instructor();
         i.setUserId(userId);
         i.setAdiNumber(adiNumber);
@@ -377,11 +433,19 @@ public class DataSeeder implements ApplicationRunner {
         i.setCarMake(carMake);
         i.setCarModel(carModel);
         i.setLocations(List.of(locationsCsv.split(",")));
+        i.setCounty(county);
+        i.setAreasCovered(areasCovered);
+        i.setLatitude(latitude);
+        i.setLongitude(longitude);
         i.setDescription(description);
         i.setReviewsCount(reviewsCount);
         i.setAgreeTerms(true);
         i.setOffersTestCarHire(offersTestCarHire);
         i.setTestCarHirePrice(testCarHirePrice);
+        i.setHasAdaptedVehicle(hasAdaptedVehicle);
+        i.setAdaptedVehicleTypes(adaptedVehicleTypes);
+        i.setDisabilityExperience(disabilityExperience);
+        i.setDisabilityTraining(disabilityTraining);
         i.setCreatedAt(new Timestamp(System.currentTimeMillis()));
         i.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
         return i;

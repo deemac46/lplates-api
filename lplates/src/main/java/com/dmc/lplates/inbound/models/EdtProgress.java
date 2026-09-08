@@ -16,6 +16,9 @@ public class EdtProgress {
     private Boolean completed;
     private Long lessonId;          // nullable — the lesson that completed this module
     private Timestamp completedAt;
+    private String note;
+    private Long loggedByInstructorId;
+    private Timestamp loggedAt;
 
     public EdtProgress() {
     }

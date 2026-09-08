@@ -37,8 +37,9 @@ public class EdtProgressServiceImpl implements EdtProgressService {
     }
 
     @Override
-    public EdtProgress markModuleCompleted(long studentId, int moduleNumber, long lessonId) {
-        return edtProgressRepository.markModuleCompleted(studentId, moduleNumber, lessonId);
+    public EdtProgress markModuleCompleted(long studentId, int moduleNumber, long lessonId,
+                                           String note, Long loggedByInstructorId) {
+        return edtProgressRepository.markModuleCompleted(studentId, moduleNumber, lessonId, note, loggedByInstructorId);
     }
 
     @Override

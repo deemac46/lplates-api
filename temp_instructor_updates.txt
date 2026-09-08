@@ -1,0 +1,30 @@
+// Dublin instructors - adding: "Dublin", areas, lat, lon after locationsCsv
+101L: "Dublin", "Drumcondra, Glasnevin, Phibsborough", 53.3698, -6.2603
+102L: "Dublin", "Rathmines, Rathgar, Terenure", 53.3178, -6.2639
+103L: "Dublin", "Clontarf, Raheny, Dollymount", 53.3712, -6.1951
+104L: "Dublin", "Swords, Malahide, Portmarnock", 53.4597, -6.2181
+105L: "Dublin", "Tallaght, Rathfarnham, Templeogue", 53.2859, -6.3586
+106L: "Dublin", "Blanchardstown, Castleknock, Carpenterstown", 53.3879, -6.3784
+107L: "Dublin", "Dún Laoghaire, Blackrock, Monkstown", 53.2941, -6.1337
+108L: "Dublin", "Finglas, Cabra, Glasnevin", 53.3892, -6.2997
+109L: "Dublin", "Lucan, Clondalkin, Palmerstown", 53.3529, -6.4486
+110L: "Dublin", "Ballsbridge, Donnybrook, Sandymount", 53.3294, -6.2281
+111L: "Dublin", "Santry, Beaumont, Artane", 53.3948, -6.2451
+112L: "Dublin", "Crumlin, Walkinstown, Drimnagh", 53.3235, -6.3168
+
+// Galway instructors
+113L: "Galway", "Salthill, Galway City, Knocknacarra", 53.2707, -9.0568
+114L: "Galway", "Oranmore, Athenry, Claregalway", 53.2649, -8.9234
+115L: "Galway", "Tuam, Claregalway, Headford", 53.5145, -8.8512
+116L: "Galway", "Galway City, Salthill, Renmore", 53.2707, -9.0491
+117L: "Galway", "Ballinasloe, Loughrea, Portumna", 53.3277, -8.2213
+118L: "Galway", "Oranmore, Galway City, Merlin Park", 53.2649, -9.0153
+119L: "Galway", "Galway City, Knocknacarra, Westside", 53.2768, -9.0738
+
+// Cork instructors
+120L: "Cork", "Cork City, Bishopstown, Wilton", 51.8985, -8.4756
+121L: "Cork", "Ballincollig, Togher, Bishopstown", 51.8874, -8.5888
+122L: "Cork", "Cobh, Carrigaline, Passage West", 51.8508, -8.3025
+123L: "Cork", "Midleton, Carrigaline, Cobh", 51.9152, -8.1789
+124L: "Cork", "Cork City, Blackrock, Mahon", 51.8974, -8.4136
+125L: "Cork", "Bishopstown, Wilton, Model Farm Road", 51.8815, -8.5295

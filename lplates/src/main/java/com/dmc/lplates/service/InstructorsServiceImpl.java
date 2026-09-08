@@ -1,11 +1,12 @@
 package com.dmc.lplates.service;
 
-import com.dmc.lplates.database.repository.InstructorRepository;
-import com.dmc.lplates.inbound.models.Instructor;
+import java.util.List;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
+import com.dmc.lplates.database.repository.InstructorRepository;
+import com.dmc.lplates.inbound.models.Instructor;
 
 @Service
 public class InstructorsServiceImpl implements InstructorsService {
@@ -27,8 +28,16 @@ public class InstructorsServiceImpl implements InstructorsService {
     }
 
     @Override
-    public String createInstructor(Instructor instructor) {
-        return instructorRepository.createInstructor(instructor);
+    public Instructor createInstructor(Instructor instructor) {
+        Long instructorId = instructorRepository.createInstructor(instructor);
+        if (instructorId == null) {
+            throw new IllegalStateException("Failed to create instructor");
+        }
+        Instructor created = instructorRepository.getInstructorById(instructorId);
+        if (created == null) {
+            throw new IllegalStateException("Instructor created but could not be loaded");
+        }
+        return created;
     }
 
     @Override
@@ -49,6 +58,11 @@ public class InstructorsServiceImpl implements InstructorsService {
     @Override
     public Instructor updateApprovalStatus(Long instructorId, String approvalStatus) {
         return instructorRepository.updateApprovalStatus(instructorId, approvalStatus);
+    }
+
+    @Override
+    public Instructor updateAvailability(Long instructorId, boolean available) {
+        return instructorRepository.updateAvailability(instructorId, available);
     }
 
     @Override

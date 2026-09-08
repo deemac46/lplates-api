@@ -12,6 +12,7 @@ public interface BookingRepository {
     List<Booking> getLessonsByInstructorId(long instructorId);
     List<Booking> getLessonsByStudentId(long studentId);
     Booking confirmBooking(Long lessonId);
+    Booking completeBooking(Booking lesson, Integer edtModuleNumber, String edtNote, Long loggedByInstructorId);
     Booking updateBooking(Booking lesson);
 
 }

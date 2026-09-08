@@ -10,6 +10,6 @@ public interface EdtProgressRepository {
     EdtProgress getEdtProgressById(long id);
     List<EdtProgress> getEdtProgressByStudentId(long studentId);
     EdtProgress getEdtProgressByStudentAndModule(long studentId, int moduleNumber);
-    EdtProgress markModuleCompleted(long studentId, int moduleNumber, long lessonId);
+    EdtProgress markModuleCompleted(long studentId, int moduleNumber, long lessonId, String note, Long loggedByInstructorId);
     List<EdtProgress> getAllEdtProgress();
 }

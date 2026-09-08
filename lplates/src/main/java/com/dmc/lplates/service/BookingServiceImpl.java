@@ -18,9 +18,9 @@ public class BookingServiceImpl implements BookingService {
     }
 
     @Override
-    public String createBooking(Booking lesson) {
+    public Booking createBooking(Booking lesson) {
         bookingRepository.insertRecord(lesson);
-        return String.valueOf(lesson.getLessonId());
+        return bookingRepository.getBookingById(lesson.getLessonId());
     }
 
     @Override
@@ -58,5 +58,10 @@ public class BookingServiceImpl implements BookingService {
     @Override
     public Booking confirmBooking(Long lessonId) {
         return bookingRepository.confirmBooking(lessonId);
+    }
+
+    @Override
+    public Booking completeBooking(Booking lesson, Integer edtModuleNumber, String edtNote, Long loggedByInstructorId) {
+        return bookingRepository.completeBooking(lesson, edtModuleNumber, edtNote, loggedByInstructorId);
     }
 }

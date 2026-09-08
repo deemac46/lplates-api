@@ -155,6 +155,7 @@ Returns a role-specific profile. Shape varies by role (see below).
     "locations":         ["Drumcondra", "Glasnevin"],
     "yearsExperience":   8,
     "reviewsCount":      42,
+    "available":         true,
     "offersTestCarHire": false,
     "testCarHirePrice":  null,
     "lessons": [ ... ]
@@ -209,6 +210,7 @@ Creates an instructor profile. The `userId` field must match the authenticated u
   "description":       "Experienced instructor",
   "reviewsCount":      0,
   "agreeTerms":        true,
+  "available":         true,
   "offersTestCarHire": false,
   "testCarHirePrice":  null
 }
@@ -231,6 +233,17 @@ Approve or reject an instructor sign-up.
 
 **200 Response:** the updated `Instructor` object.
 **404** — instructor not found. **400** — invalid `approvalStatus`.
+
+### PATCH /instructors/{instructorId}/availability  *(owning INSTRUCTOR or ADMIN)*
+Quickly toggle whether the instructor is accepting bookings. Designed for a UI switch; defaults to `true`.
+
+**Request body:**
+```json
+{ "available": false }
+```
+
+**200 Response:** the updated `Instructor` object.
+**400** — missing `available`. **403** — not the owning instructor and not an ADMIN. **404** — instructor not found.
 
 ### POST /instructors/{instructorId}/profile-picture  *(owning INSTRUCTOR or ADMIN)*
 Uploads a profile picture. `multipart/form-data` with a `file` part (JPEG/PNG/WEBP, max 5MB).
@@ -281,6 +294,36 @@ Full update of a lesson. Same body as create.
 ### POST /lessons/confirm/{lessonId}
 Sets lesson status to `confirmed`.
 
+### POST /lessons/{lessonId}/complete  *(INSTRUCTOR, ADMIN)*
+Marks the lesson completed. The EDT module and note are nullable; omit both for a normal lesson completion. If `edtModuleNumber` is supplied, the API creates or updates the learner's EDT progress and records lesson/instructor provenance.
+
+**Request body:** optional
+```json
+{
+  "edtModuleNumber": 3,
+  "edtNote": "Covered changing direction, reverse around corner, and junction observation."
+}
+```
+
+**Response body:**
+```json
+{
+  "lesson": { ... },
+  "edtProgress": {
+    "studentId": 5,
+    "moduleNumber": 3,
+    "completed": true,
+    "lessonId": 12,
+    "completedAt": "2026-08-29T18:30:00.000+00:00",
+    "note": "Covered changing direction, reverse around corner, and junction observation.",
+    "loggedByInstructorId": 2,
+    "loggedAt": "2026-08-29T18:30:00.000+00:00"
+  }
+}
+```
+
+For non-EDT completions, `edtProgress` is `null`.
+
 ### GET /lessons/pending
 All lessons with status `pending`.
 
@@ -313,7 +356,10 @@ Create or upsert an EDT progress record.
   "moduleName":   "Car Familiarisation",
   "completed":    false,
   "lessonId":     null,
-  "completedAt":  null
+  "completedAt":  null,
+  "note":         null,
+  "loggedByInstructorId": null,
+  "loggedAt":     null
 }
 ```
 
@@ -390,7 +436,7 @@ Single record by ID.
 | `bookings_lesson`          | `id`, `instructor_id`, `student_id` → both `accounts_user.id` |
 | `bookings_instructorpricing`| `id`, `instructor_id` → `accounts_instructor.id`      |
 | `bookings_feedback`        | `id`, `lesson_id` (unique), `author_id`               |
-| `bookings_edtprogress`     | `id`, `student_id`, `module_number` (unique pair)     |
+| `bookings_edtprogress`     | `id`, `student_id`, `module_number` (unique pair), `lesson_id`, `note`, `logged_by_instructor_id`, `logged_at` |
 
 **Key ID relationships for the Django client:**
 - `accounts_user.id` ↔ `bookings_lesson.student_id` (LEARNER bookings)
@@ -407,8 +453,8 @@ Single record by ID.
 | `/auth/**`       | public  | public     | public|
 | `/instructors/**`| read    | read+create+own profile picture | full  |
 | `/instructors/pending`, `/instructors/*/approval` | — | — | full |
-| `/lessons/**`    | read+create | read   | full  |
-| `/edt/**`        | full    | —          | full  |
+| `/lessons/**`    | read+create | read+assigned completion | full  |
+| `/edt/**`        | read own progress | assigned completion | full  |
 | `/pricing/**`    | —       | full       | full  |
 | `/feedback/**`   | full    | read       | full  |
 | `/users/me`      | self    | self       | self  |

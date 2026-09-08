@@ -3,6 +3,7 @@ package com.dmc.lplates.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -49,6 +50,17 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
+            .exceptionHandling(errors -> errors
+                .authenticationEntryPoint((request, response, exception) -> {
+                    response.setStatus(401);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.getWriter().write("{\"status\":401,\"error\":\"Unauthorized\",\"message\":\"Authentication is required\"}");
+                })
+                .accessDeniedHandler((request, response, exception) -> {
+                    response.setStatus(403);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.getWriter().write("{\"status\":403,\"error\":\"Forbidden\",\"message\":\"Access is denied\"}");
+                }))
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 // Public endpoints
@@ -63,8 +75,10 @@ public class SecurityConfig {
                 // Lessons - LEARNER and ADMIN can create; all authenticated can read
                 .requestMatchers(HttpMethod.POST, "/lessons/create").hasAnyRole("ADMIN", "LEARNER")
                 .requestMatchers("/lessons/**").authenticated()
-                // EDT - LEARNER and ADMIN
-                .requestMatchers("/edt/**").hasAnyRole("ADMIN", "LEARNER")
+                // EDT reads are owner-scoped; assigned instructors perform completion writes
+                .requestMatchers(HttpMethod.POST, "/edt/**").hasAnyRole("ADMIN", "INSTRUCTOR")
+                .requestMatchers(HttpMethod.PUT, "/edt/**").hasAnyRole("ADMIN", "INSTRUCTOR")
+                .requestMatchers(HttpMethod.GET, "/edt/**").hasAnyRole("ADMIN", "LEARNER", "INSTRUCTOR")
                 // Pricing - INSTRUCTOR and ADMIN
                 .requestMatchers("/pricing/**").hasAnyRole("ADMIN", "INSTRUCTOR")
                 // Users

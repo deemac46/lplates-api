@@ -10,7 +10,7 @@ public interface InstructorsService {
 
     Instructor getInstructorById(Long instructorId);
 
-    String createInstructor(Instructor instructor);
+    Instructor createInstructor(Instructor instructor);
 
     Instructor getInstructorWithLessons(Long instructorId);
 
@@ -19,6 +19,8 @@ public interface InstructorsService {
     List<Instructor> getPendingInstructors();
 
     Instructor updateApprovalStatus(Long instructorId, String approvalStatus);
+
+    Instructor updateAvailability(Long instructorId, boolean available);
 
     Instructor updateProfilePicture(Long instructorId, String profilePicture);
 }

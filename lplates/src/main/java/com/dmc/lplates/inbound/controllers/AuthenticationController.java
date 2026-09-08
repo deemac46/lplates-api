@@ -1,8 +1,6 @@
 package com.dmc.lplates.inbound.controllers;
 
 import java.sql.Timestamp;
-import java.util.Map;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -10,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -23,6 +22,8 @@ import com.dmc.lplates.inbound.dtos.RegisterDto;
 import com.dmc.lplates.inbound.models.Role;
 import com.dmc.lplates.inbound.models.User;
 import com.dmc.lplates.service.UserService;
+import com.dmc.lplates.service.ConflictException;
+import com.dmc.lplates.service.UnauthorizedException;
 
 @RestController
 @RequestMapping("/auth")
@@ -52,6 +53,10 @@ public class AuthenticationController {
      */
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginDto loginDto) {
+        if (loginDto.getUsername() == null || loginDto.getUsername().isBlank()
+                || loginDto.getPassword() == null || loginDto.getPassword().isBlank()) {
+            throw new IllegalArgumentException("username and password are required");
+        }
         log.info("Login attempt for identifier={}", loginDto.getUsername());
         try {
             authenticationManager.authenticate(
@@ -59,8 +64,7 @@ public class AuthenticationController {
             );
         } catch (BadCredentialsException e) {
             log.warn("Login failed for identifier={}: invalid credentials", loginDto.getUsername());
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of("error", "Invalid username or password"));
+            throw new UnauthorizedException("Invalid username or password");
         }
 
         User user = userService.getUserByUsernameOrEmail(loginDto.getUsername());
@@ -76,13 +80,16 @@ public class AuthenticationController {
      */
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody RegisterDto registerDto) {
+        if (registerDto.getUsername() == null || registerDto.getUsername().isBlank()
+                || registerDto.getPassword() == null || registerDto.getPassword().isBlank()
+                || registerDto.getEmail() == null || registerDto.getEmail().isBlank()) {
+            throw new IllegalArgumentException("username, email, and password are required");
+        }
         if (userService.existsByUsername(registerDto.getUsername())) {
-            return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(Map.of("error", "Username already taken"));
+            throw new ConflictException("Username already taken");
         }
         if (registerDto.getEmail() != null && userService.existsByEmail(registerDto.getEmail())) {
-            return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(Map.of("error", "Email already in use"));
+            throw new ConflictException("Email already in use");
         }
 
         Role role = Role.LEARNER;
@@ -90,9 +97,11 @@ public class AuthenticationController {
             try {
                 role = Role.valueOf(registerDto.getRole().toUpperCase());
             } catch (IllegalArgumentException ignored) {
-                return ResponseEntity.badRequest()
-                        .body(Map.of("error", "Invalid role. Must be LEARNER, INSTRUCTOR, or ADMIN"));
+                throw new IllegalArgumentException("role must be LEARNER or INSTRUCTOR");
             }
+        }
+        if (role == Role.ADMIN) {
+            throw new AccessDeniedException("Administrator accounts cannot be created through public registration");
         }
 
         User user = new User();
